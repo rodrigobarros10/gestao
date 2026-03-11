@@ -1,13 +1,29 @@
 import streamlit as st
 import calendar
 
-def get_date_filter_ui(key_prefix):
+def get_date_filter_ui(key_prefix, show_labels=True):
     c1, c2 = st.columns(2)
+    
+    # Define a visibilidade baseada no parâmetro
+    visibilidade = "visible" if show_labels else "collapsed"
+    
     with c1:
-        ano_sel = st.selectbox("Ano", [2026, 2025, 2024,2023], key=f'ano_{key_prefix}')
+        ano_sel = st.selectbox(
+            "Ano", 
+            [2026, 2025, 2024, 2023], 
+            key=f'ano_{key_prefix}', 
+            label_visibility=visibilidade
+        )
     with c2:
         meses_map = {1:'Janeiro', 2:'Fevereiro', 3:'Março', 4:'Abril', 5:'Maio', 6:'Junho', 7:'Julho', 8:'Agosto', 9:'Setembro', 10:'Outubro', 11:'Novembro', 12:'Dezembro'}
-        mes_sel = st.selectbox("Mês", list(meses_map.keys()), format_func=lambda x: meses_map[x], index=6, key=f'mes_{key_prefix}')
+        mes_sel = st.selectbox(
+            "Mês", 
+            list(meses_map.keys()), 
+            format_func=lambda x: meses_map[x], 
+            index=1, 
+            key=f'mes_{key_prefix}', 
+            label_visibility=visibilidade
+        )
     
     last_day = calendar.monthrange(ano_sel, mes_sel)[1]
     return {
