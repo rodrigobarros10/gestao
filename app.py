@@ -43,8 +43,8 @@ if not st.session_state['logged_in']:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         # Título personalizado em cinza escuro
-        st.markdown("<h1 style='text-align: center; color: #4F4F4F;'>🚇 DATA TREM</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #777777;'>Faça login para acessar o sistema</p>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: #FFFFFF;'>🚇 DATA TREM</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #FFFFFF;'>Faça login para acessar o sistema</p>", unsafe_allow_html=True)
         
         if not st.session_state.get('connected'):
             st.error("🔴 Banco de dados offline. Verifique as credenciais no .env")

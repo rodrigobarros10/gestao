@@ -46,7 +46,7 @@ with ml_tab1:
     st.markdown("#### 📈 Projeção de Demanda e Operação (Próximos 6 Meses)")
     st.caption("O algoritmo analisa o histórico real dos últimos meses na base de dados, calcula a linha de tendência (regressão) e espelha o comportamento de variância para os próximos meses.")
     
-    # 1. Tentar puxar dados reais do banco
+    # Consumindo da view materializada super rápida
     engine = st.session_state.get('db_loader').get_engine() if st.session_state.get('connected') else None
     
     df_pax = pd.DataFrame()
@@ -54,25 +54,25 @@ with ml_tab1:
     
     if engine:
         try:
-            # Puxa o histórico mensal de passageiros
+            # Puxa o histórico mensal de passageiros da View
             q_pax = """
-            SELECT DATE_TRUNC('month', data_hora)::date as mes, COUNT(*) as qtd 
-            FROM public.arq2_bilhetagem 
+            SELECT TO_CHAR(data, 'YYYY-MM-01')::date as mes, SUM(total_passageiros) as qtd 
+            FROM public.vw_resumo_bilhetagem 
             GROUP BY 1 ORDER BY 1
             """
             df_pax = run_query(engine, q_pax)
             
-            # Puxa o histórico mensal de viagens
+            # Puxa o histórico mensal de viagens da View
             q_viagens = """
-            SELECT DATE_TRUNC('month', data)::date as mes, COUNT(*) as qtd 
-            FROM public.arq3_viagens 
+            SELECT TO_CHAR(data, 'YYYY-MM-01')::date as mes, SUM(total_viagens) as qtd 
+            FROM public.vw_resumo_viagens 
             GROUP BY 1 ORDER BY 1
             """
             df_viagens = run_query(engine, q_viagens)
         except:
             pass
 
-    # 2. Fallback de Segurança: Se não houver dados no banco, cria um mockup realista dos últimos 12 meses
+    # Fallback de Segurança caso falhe a query
     hoje = datetime.now().date()
     hoje_inicio_mes = hoje.replace(day=1)
     
@@ -86,54 +86,43 @@ with ml_tab1:
         qtd_viagens = [random.randint(8500, 9500) for _ in range(12)]
         df_viagens = pd.DataFrame({'mes': meses_hist, 'qtd': qtd_viagens})
 
-    # 3. Função do Algoritmo Preditivo (Regressão Linear + Ruído Histórico)
     def gerar_previsao_ml(df_hist, future_months=6):
         df = df_hist.sort_values('mes').copy()
         df['mes'] = pd.to_datetime(df['mes'])
-        df = df.tail(24) # Limita a análise aos últimos 24 meses para captar a tendência mais recente
+        df = df.tail(24)
         
         y = df['qtd'].values
         x = np.arange(len(y))
         
-        # Treinamento da linha de tendência (Regressão de Grau 1)
         z = np.polyfit(x, y, 1)
         p = np.poly1d(z)
         
-        # Calcula a variância (resíduos) para espelhar a margem de erro natural da operação
         residuos = y - p(x)
         desvio_padrao = np.std(residuos) if np.std(residuos) > 0 else np.mean(y) * 0.05
         
-        # Gera as datas futuras
         last_date = df['mes'].iloc[-1]
         future_dates = [(last_date + pd.DateOffset(months=i)).date() for i in range(1, future_months + 1)]
         
         future_x = np.arange(len(y), len(y) + future_months)
         tendencia_base = p(future_x)
         
-        # Aplica a previsão espelhando a volatilidade do sistema real
         forecast = [int(max(0, val + random.uniform(-desvio_padrao, desvio_padrao))) for val in tendencia_base]
         upper_bound = [int(val + desvio_padrao * 1.5) for val in forecast]
         lower_bound = [int(max(0, val - desvio_padrao * 1.5)) for val in forecast]
         
-        # Datas de histórico formatadas
         hist_dates = [d.date() for d in df['mes']]
         
         return hist_dates, list(y), future_dates, forecast, upper_bound, lower_bound
 
-    # Executa o algoritmo para as duas métricas
     h_dates_p, h_y_p, f_dates_p, f_y_p, f_up_p, f_low_p = gerar_previsao_ml(df_pax)
     h_dates_v, h_y_v, f_dates_v, f_y_v, f_up_v, f_low_v = gerar_previsao_ml(df_viagens)
 
-    # 4. Renderização lado a lado em Painel
     c_pax, c_trips = st.columns(2)
     
     with c_pax:
         fig_p = go.Figure()
-        # Histórico
         fig_p.add_trace(go.Scatter(x=h_dates_p, y=h_y_p, mode='lines+markers', name='Histórico Real', line=dict(color='#3498db', width=3)))
-        # Previsão
         fig_p.add_trace(go.Scatter(x=f_dates_p, y=f_y_p, mode='lines+markers', name='Projeção IA', line=dict(color='#e67e22', width=3, dash='dash')))
-        # Intervalos de Confiança (Sombreamento)
         fig_p.add_trace(go.Scatter(x=f_dates_p, y=f_up_p, mode='lines', line=dict(width=0), showlegend=False))
         fig_p.add_trace(go.Scatter(x=f_dates_p, y=f_low_p, mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(230, 126, 34, 0.2)', name='Margem Espelhada'))
         
@@ -142,11 +131,8 @@ with ml_tab1:
         
     with c_trips:
         fig_v = go.Figure()
-        # Histórico
         fig_v.add_trace(go.Scatter(x=h_dates_v, y=h_y_v, mode='lines+markers', name='Histórico Real', line=dict(color='#2ecc71', width=3)))
-        # Previsão
         fig_v.add_trace(go.Scatter(x=f_dates_v, y=f_y_v, mode='lines+markers', name='Projeção IA', line=dict(color='#f1c40f', width=3, dash='dash')))
-        # Intervalos de Confiança (Sombreamento)
         fig_v.add_trace(go.Scatter(x=f_dates_v, y=f_up_v, mode='lines', line=dict(width=0), showlegend=False))
         fig_v.add_trace(go.Scatter(x=f_dates_v, y=f_low_v, mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(241, 196, 15, 0.2)', name='Margem Espelhada'))
         

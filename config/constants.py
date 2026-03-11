@@ -390,6 +390,14 @@ INSERTS_PREDEFINIDOS = [
             delete from migracao.arq7_estacoes;
             delete from migracao.arq8_statusviagens;
             delete from migracao.arq9_validacaobilhetes;
+            REFRESH MATERIALIZED VIEW public.vw_resumo_bilhetagem;
+            REFRESH MATERIALIZED VIEW public.vw_resumo_viagens;
+            REFRESH MATERIALIZED VIEW public.vw_resumo_manutencao;
+            REFRESH MATERIALIZED VIEW public.vw_resumo_ocorrencias;
+            REFRESH MATERIALIZED VIEW public.vw_resumo_frota;
+            REFRESH MATERIALIZED VIEW public.vw_headway_diario_hora;
+            REFRESH MATERIALIZED VIEW public.vw_resumo_km_percorrida;
+            REFRESH MATERIALIZED VIEW public.vw_headway_mes_hora;
         """,
     }
 ]

@@ -4,6 +4,7 @@ import plotly.express as px
 import random
 from components.filters import get_date_filter_ui
 from components.ui_elements import render_kpi_card_modern, render_download_btn
+from database.connection import run_query
 
 from utils.helpers import get_base64_of_bin_file
 from components.ui_elements import load_custom_css
@@ -23,17 +24,59 @@ if not st.session_state.get('logged_in') or "indicadores" not in st.session_stat
     st.error("Acesso Negado.")
     st.stop()
 
+# --- CONEXÃO COM BANCO DE DADOS ---
+db_loader = st.session_state.get('db_loader')
+if not db_loader:
+    st.error("Banco de dados desconectado.")
+    st.stop()
+engine = db_loader.get_engine()
+
+# --- FILTROS ---
 filters = get_date_filter_ui("cmd")
+ano_filtro = filters['ano']
+mes_filtro = filters['mes']
+
 st.subheader(f"Painel de Indicadores (CMD) - {filters['mes_nome']}/{filters['ano']}")
 
-ico = 0.985; tmp = 1.010; ial = 0.995; iol = 0.980
-mro = 1.20; dtt = 0.998; est = 0.99; lin = 0.99; irg = 0.95; isp = 0.90
+# --- FUNÇÃO AUXILIAR PARA BUSCAR KPI ---
+def get_kpi_value(query):
+    try:
+        df = run_query(engine, query)
+        if not df.empty and pd.notnull(df.iloc[0, 0]):
+            return float(df.iloc[0, 0])
+    except Exception as e:
+        pass
+    return 0.0
 
+# --- BUSCA DOS INDICADORES REAIS NO BANCO DE DADOS ---
+# Utilizando as tabelas e views passadas
+q_ico = f"SELECT ico_linha FROM public.vw_ico_linha_final WHERE ano = {ano_filtro} AND mes = {mes_filtro} LIMIT 1"
+q_tmp = f"SELECT tmp FROM public.kpi_tmp WHERE ano = {ano_filtro} AND mes = {mes_filtro} LIMIT 1"
+q_ial = f"SELECT ial FROM public.kpi_ial WHERE ano = {ano_filtro} AND mes = {mes_filtro} LIMIT 1"
+q_iol = f"SELECT iol FROM public.kpi_iol WHERE ano = {ano_filtro} AND mes = {mes_filtro} LIMIT 1"
+q_mro = f"SELECT mro_linha FROM public.kpi_mro WHERE ano = {ano_filtro} AND mes = {mes_filtro} LIMIT 1"
+q_dtt = f"SELECT dtt FROM public.kpi_dtt WHERE ano = {ano_filtro} AND mes = {mes_filtro} LIMIT 1"
+
+ico = get_kpi_value(q_ico)
+tmp = get_kpi_value(q_tmp)
+ial = get_kpi_value(q_ial)
+iol = get_kpi_value(q_iol)
+mro = get_kpi_value(q_mro)
+dtt = get_kpi_value(q_dtt)
+
+# Indicadores não passados na lista de queries (Zerados conforme solicitado)
+est = 0.0
+lin = 0.0
+irg = 0.0
+isp = 0.0
+
+# --- CÁLCULO DOS COEFICIENTES (FÓRMULAS CONTRATUAIS) ---
 ido = (0.1 * tmp) + (0.3 * ico) + (0.3 * ial) + (0.3 * iol)
 idm = (0.25 * mro) + (0.25 * dtt) + (0.25 * est) + (0.25 * lin)
 ids = (0.5 * irg) + (0.5 * isp)
 cmd = (0.4 * ido) + (0.4 * idm) + (0.2 * ids)
 
+# --- RENDENRIZAÇÃO DOS CARDS ---
 st.markdown("### 🚦 IDO - Operacional")
 c1, c2, c3, c4 = st.columns(4)
 with c1: 
@@ -75,6 +118,7 @@ with c10:
 
 st.divider()
 
+# --- GRÁFICO DE EVOLUÇÃO (Simulação baseada no valor real do mês) ---
 active_cmd_chart = st.session_state.get('active_cmd_chart')
 if active_cmd_chart:
     metas_cmd = {'ico': 0.980, 'tmp': 1.010, 'ial': 0.950, 'iol': 0.950, 'mro': 1.0, 'dtt': 0.995, 'est': 0.98, 'lin': 0.99, 'irg': 0.90, 'isp': 0.85, 'cmd': 1.000}
@@ -84,7 +128,14 @@ if active_cmd_chart:
     meta_val = metas_cmd.get(active_cmd_chart, 1.0)
     
     dates = pd.date_range(start=filters['dt_start'], end=filters['dt_end'])
-    valores = [base_val * random.uniform(0.97, 1.03) for _ in dates]
+    
+    # Se o valor base for 0 (indicador inativo/não possui tabela), gera a linha zerada. 
+    # Caso contrário, espelha a volatilidade natural em volta do indicador real do mês.
+    if base_val == 0.0:
+        valores = [0.0 for _ in dates]
+    else:
+        valores = [base_val * random.uniform(0.97, 1.03) for _ in dates]
+        
     df_cmd_evo = pd.DataFrame({'Data': dates, 'Valor': valores})
     
     fig_cmd = px.line(df_cmd_evo, x='Data', y='Valor', title=f"Evolução Diária - Indicador {active_cmd_chart.upper()}", markers=True)
@@ -104,6 +155,6 @@ with col_res2:
     </div>
     """, unsafe_allow_html=True)
     
-    if st.button("📈 Ver Evolução Geral do CMD", key="btn_cmd", use_container_width=True): 
+    if st.button("📈 Ver Evolução Geral do CMD", key="btn_cmd_geral", use_container_width=True): 
         st.session_state['active_cmd_chart'] = 'cmd'
         st.rerun()
