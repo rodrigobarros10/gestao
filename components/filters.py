@@ -15,7 +15,7 @@ def get_date_filter_ui(key_prefix, show_labels=True):
             label_visibility=visibilidade
         )
     with c2:
-        meses_map = {1:'Janeiro', 2:'Fevereiro', 3:'Março', 4:'Abril', 5:'Maio', 6:'Junho', 7:'Julho', 8:'Agosto', 9:'Setembro', 10:'Outubro', 11:'Novembro', 12:'Dezembro'}
+        meses_map = {1:'1', 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'11', 12:'12'}
         mes_sel = st.selectbox(
             "Mês", 
             list(meses_map.keys()), 

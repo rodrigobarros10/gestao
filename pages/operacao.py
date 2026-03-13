@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import calendar
 from datetime import datetime
+from functools import reduce
 
 from components.filters import get_date_filter_ui
 from components.ui_elements import render_download_btn
@@ -15,18 +16,29 @@ from components.ui_elements import load_custom_css
 
 st.set_page_config(layout="wide") 
 
+# --- CSS ULTRA-COMPACTO E MODERNO ---
 st.markdown("""
     <style>
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 98%; }
-    .pbi-title { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; color: #FFFFFF !important; }
-    [data-testid="stSidebar"] { background-color: #f3f2f1; border-right: 1px solid #e1dfdd; }
-    .stButton > button { background-color: #ffffff; border: 1px solid #cccccc; color: #333333; border-radius: 2px; font-weight: 600; transition: all 0.2s ease; }
-    .stButton > button:hover { background-color: #eaeaea; border-color: #666666; color: #000000; }
-    .stDownloadButton button { padding: 2px 10px; font-size: 12px; border-radius: 2px; }
-    [data-testid="stVerticalBlockBorderWrapper"] { height: 100%; }
-    [data-testid="stMetricValue"] { font-size: 26px; font-weight: 700; color: #FFFFFF !important; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    [data-testid="stMetricLabel"] p { font-size: 14px; color: #FFFFFF !important; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .section-title { font-size: 20px; font-weight: 600; color: #FFFFFF; padding-top: 15px; padding-bottom: 5px; border-bottom: 1px solid #555; margin-bottom: 15px; margin-top: 10px; }
+    .block-container { padding: 0.5rem 1rem !important; max-width: 100%; }
+    header { visibility: hidden; height: 0px; }
+    
+    /* Layout dos KPIs em Grade HTML */
+    .kpi-wrapper { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 12px; margin-top: 5px; }
+    .kpi-card { flex: 1; background: rgba(20, 20, 25, 0.6); border: 1px solid #333; border-radius: 8px; padding: 10px 5px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); transition: transform 0.2s; }
+    .kpi-card:hover { transform: translateY(-2px); border-color: #555; }
+    .kpi-title { font-family: 'Segoe UI', sans-serif; font-size: 11px; color: #aaa; font-weight: 600; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.5px; }
+    .kpi-val { font-family: 'Segoe UI', sans-serif; font-size: 20px; color: #fff; font-weight: 800; margin: 2px 0; }
+    .kpi-delta { font-size: 11px; font-weight: 700; }
+    .d-pos { color: #2ecc71; }
+    .d-neg { color: #e74c3c; }
+    .d-neu { color: #f1c40f; }
+    
+    .pbi-title { font-family: 'Segoe UI', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 0px; color: #FFFFFF !important; }
+    .stDataFrame { margin-top: 5px; }
+    
+    /* Ajuste fino dos botões de Download e Expansão para ficarem lado a lado */
+    .stButton > button, .stDownloadButton > button { padding: 2px 10px !important; font-size: 12px !important; border-radius: 4px; }
+    hr { margin: 8px 0px; opacity: 0.2; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -34,410 +46,284 @@ img_base64 = get_base64_of_bin_file('fundo_metro.jpeg')
 load_custom_css(img_base64)
 
 if not st.session_state.get('logged_in', False): st.switch_page("app.py")
+if "operacao" not in st.session_state['permissions'].get(st.session_state['current_role'], []): st.stop()
 
-col_btn, col_vazia = st.columns([1.5, 8.5]) 
-with col_btn:
-    if st.button("⬅️ Voltar ao Início", use_container_width=True): st.switch_page("app.py")
-
-if not st.session_state.get('logged_in') or "operacao" not in st.session_state['permissions'].get(st.session_state['current_role'], []):
-    st.error("Acesso Negado.")
-    st.stop()
-
-db_loader = st.session_state.get('db_loader')
-if not db_loader: st.stop()
-engine = db_loader.get_engine()
-
-col_title, col_filter = st.columns([8, 2])
-with col_filter:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title' style='font-size: 13px; margin-bottom: 0px;'>⚙️ Período</div>", unsafe_allow_html=True)
-        filters = get_date_filter_ui("operacao_main")
-
-with col_title:
-    st.markdown(f"<h3 style='padding-top: 15px; color: #FFFFFF;'>Painel Integrado de Operação - {filters['mes_nome']}/{filters['ano']}</h3>", unsafe_allow_html=True)
-
-ano_ant = filters['ano'] - 1
-mes = filters['mes']
-last_day_ant = calendar.monthrange(ano_ant, mes)[1]
-dt_start_ant = f"{ano_ant}-{mes:02d}-01"
-dt_end_ant = f"{ano_ant}-{mes:02d}-{last_day_ant}"
-
-def calc_delta(atual, anterior):
-    try:
-        atual = float(atual)
-        anterior = float(anterior)
-    except:
-        return "0% vs Ano Ant."
-    if anterior == 0 and atual > 0: return "100% vs Ano Ant."
-    elif anterior > 0: return f"{((atual - anterior) / anterior) * 100:.1f}% vs Ano Ant."
-    return "0% vs Ano Ant."
-
+engine = st.session_state.get('db_loader').get_engine()
 
 # ==========================================
-# BLOCO 1: DEMANDA, RECEITA E VIAGENS
+# LÓGICA DO MODAL (VISÃO AMPLIADA)
 # ==========================================
-st.markdown("<div class='section-title'>👥 Demanda, Receita e Viagens</div>", unsafe_allow_html=True)
-
-c_kpi1, c_kpi2, c_kpi3 = st.columns(3)
-
-# KPI 1: Passageiros
-df_pax = run_query(engine, f"SELECT SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}'")
-val_pax = df_pax.iloc[0,0] if not df_pax.empty and pd.notnull(df_pax.iloc[0,0]) else 0
-val_pax_ant = run_query(engine, f"SELECT SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{dt_start_ant}' AND data <= '{dt_end_ant}'").iloc[0,0]
-val_pax_ant = val_pax_ant if pd.notnull(val_pax_ant) else 0
-with c_kpi1:
+if st.session_state.get('show_expanded_chart'):
     with st.container(border=True):
-        st.metric("Total de Passageiros", f"{val_pax:,.0f}".replace(",", "."), delta=calc_delta(val_pax, val_pax_ant))
-        df_dl_pax = run_query(engine, f"SELECT data, SUM(total_passageiros) as passageiros FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_pax, "evolucao_diaria_passageiros")
+        col_t, col_b = st.columns([8, 2])
+        with col_t:
+            st.markdown(f"<h3 style='color:white; margin-top:5px;'>🔍 {st.session_state.get('expanded_title', 'Visão Ampliada')}</h3>", unsafe_allow_html=True)
+        with col_b:
+            if st.button("❌ Fechar Ampliação", use_container_width=True, key="btn_fechar_exp"):
+                st.session_state['show_expanded_chart'] = False
+                st.rerun()
+        
+        fig_large = go.Figure(st.session_state['expanded_chart'])
+        fig_large.update_layout(height=600)
+        st.plotly_chart(fig_large, use_container_width=True)
+    
+    st.stop() 
+def render_chart_footer(df, file_name, fig, title, key):
+    c1, c2 = st.columns([8, 2])
+    with c1:
+        render_download_btn(df, file_name)
+    with c2:
+        if st.button("⛶", key=key, help="Ampliar Gráfico", use_container_width=True):
+            st.session_state['show_expanded_chart'] = True
+            st.session_state['expanded_chart'] = fig
+            st.session_state['expanded_title'] = title
+            st.rerun()
 
-# KPI 2: Receita
-df_rev = run_query(engine, f"SELECT SUM(receita_total) as val FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}'")
-val_rev = df_rev.iloc[0,0] if not df_rev.empty and pd.notnull(df_rev.iloc[0,0]) else 0
-df_rev_ant = run_query(engine, f"SELECT SUM(receita_total) as val FROM public.vw_resumo_bilhetagem WHERE data >= '{dt_start_ant}' AND data <= '{dt_end_ant}'")
-val_rev_ant = df_rev_ant.iloc[0,0] if not df_rev_ant.empty and pd.notnull(df_rev_ant.iloc[0,0]) else 0
-with c_kpi2:
+# --- TOPO SUPER COMPACTO ---
+c_bt, c_tit, c_fil = st.columns([1, 7, 2])
+with c_bt:
+    if st.button("⬅️ Início", use_container_width=True): st.switch_page("app.py")
+with c_fil:
+    filters = get_date_filter_ui("operacao_main", show_labels=False)
+with c_tit:
+    st.markdown(f"<h4 style='color: #FFFFFF; margin-top:0px;'>Painel de Operação - {filters['mes_nome']}/{filters['ano']}</h4>", unsafe_allow_html=True)
+
+dt_s, dt_e = filters['dt_start'], filters['dt_end']
+ano_ant, mes = filters['ano'] - 1, filters['mes']
+dt_s_ant = f"{ano_ant}-{mes:02d}-01"
+dt_e_ant = f"{ano_ant}-{mes:02d}-{calendar.monthrange(ano_ant, mes)[1]}"
+
+# --- LÓGICA DE CÁLCULO PARA OS KPIs ---
+def get_val(q):
+    df = run_query(engine, q)
+    return float(df.iloc[0,0]) if not df.empty and pd.notnull(df.iloc[0,0]) else 0.0
+
+def calc_d(at, an, inv=False):
+    if an == 0 and at > 0: val = 100.0
+    elif an == 0 and at == 0: val = 0.0
+    else: val = ((at - an) / an) * 100
+    
+    if val > 0: return f"+{val:.1f}%", "d-neg" if inv else "d-pos"
+    elif val < 0: return f"{val:.1f}%", "d-pos" if inv else "d-neg"
+    return "0.0%", "d-neu"
+
+v_pax = get_val(f"SELECT SUM(total_passageiros) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_pax_a = get_val(f"SELECT SUM(total_passageiros) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dp_txt, dp_css = calc_d(v_pax, v_pax_a)
+
+v_rev = get_val(f"SELECT SUM(receita_total) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_rev_a = get_val(f"SELECT SUM(receita_total) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dr_txt, dr_css = calc_d(v_rev, v_rev_a)
+
+v_via = get_val(f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_via_a = get_val(f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dv_txt, dv_css = calc_d(v_via, v_via_a)
+
+q_tmp = f"SELECT SUM(tempo_medio_minutos * total_viagens)/NULLIF(SUM(total_viagens),0) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND tipo_real=6 AND ((hora>=6 AND hora<8) OR (hora>=17 AND hora<19))"
+v_tmp = get_val(q_tmp)
+v_tmp_a = get_val(q_tmp.replace(dt_s, dt_s_ant).replace(dt_e, dt_e_ant))
+dtm_txt, dtm_css = calc_d(v_tmp, v_tmp_a, inv=True)
+
+v_km = get_val(f"SELECT SUM(km_total) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}'")
+v_km_a = get_val(f"SELECT SUM(km_total) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dk_txt, dk_css = calc_d(v_km, v_km_a)
+
+v_ind = get_val(f"SELECT SUM(horas_indisp) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}'")
+v_ind_a = get_val(f"SELECT SUM(horas_indisp) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+di_txt, di_css = calc_d(v_ind, v_ind_a, inv=True)
+
+v_man = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_man_a = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dm_txt, dm_css = calc_d(v_man, v_man_a, inv=True)
+
+v_oco = get_val(f"SELECT SUM(total_ocorrencias) FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_oco_a = get_val(f"SELECT SUM(total_ocorrencias) FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+do_txt, do_css = calc_d(v_oco, v_oco_a, inv=True)
+
+# Renderiza os KPIs
+st.markdown(f"""
+<div class="kpi-wrapper">
+    <div class="kpi-card"><div class="kpi-title">👥 Passageiros</div><div class="kpi-val">{v_pax/1000000:.3f}M</div><div class="kpi-delta {dp_css}">{dp_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">💰 Receita (R$)</div><div class="kpi-val">{v_rev/1000000:.3f}M</div><div class="kpi-delta {dr_css}">{dr_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">🚆 Viagens Realiz.</div><div class="kpi-val">{v_via:,.0f}</div><div class="kpi-delta {dv_css}">{dv_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">⏱️ TMP (Pico)</div><div class="kpi-val">{v_tmp:.1f}m</div><div class="kpi-delta {dtm_css}">{dtm_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">🛤️ KM Rodado</div><div class="kpi-val">{v_km/1000:.1f}k</div><div class="kpi-delta {dk_css}">{dk_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">📉 Indisp. (H)</div><div class="kpi-val">{v_ind:,.0f}h</div><div class="kpi-delta {di_css}">{di_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">🔧 Manutenções</div><div class="kpi-val">{v_man:,.0f}</div><div class="kpi-delta {dm_css}">{dm_txt}</div></div>
+    <div class="kpi-card"><div class="kpi-title">⚠️ Ocorrências</div><div class="kpi-val">{v_oco:,.0f}</div><div class="kpi-delta {do_css}">{do_txt}</div></div>
+</div>
+""", unsafe_allow_html=True)
+
+# --- CONFIGURAÇÃO GLOBAL PLOTLY MODERNIZADA ---
+def apply_modern_layout(fig, h=180, show_x=False, show_legend=False):
+    fig.update_layout(
+        height=h, margin=dict(t=5, b=0, l=0, r=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, title="", visible=show_x),
+        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.1)", title="", zeroline=False),
+        showlegend=show_legend,
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1) if show_legend else None,
+        font=dict(color="#FFF", family="Segoe UI")
+    )
+    return fig
+
+# ==========================================
+# FILEIRA 1: Evolução, Mapa e Raio-X
+# ==========================================
+c_evo, c_rx = st.columns([3.5, 4.5])
+
+with c_evo:
     with st.container(border=True):
-        st.metric("Receita Total", f"R$ {val_rev:,.2f}".replace(".", ","), delta=calc_delta(val_rev, val_rev_ant))
-        df_dl_rev = run_query(engine, f"SELECT data, SUM(receita_total) as receita FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_rev, "evolucao_diaria_receita")
-
-# KPI 3: Viagens Realizadas
-df_real = run_query(engine, f"SELECT SUM(total_viagens) as qtd FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}'")
-val_real = df_real.iloc[0,0] if not df_real.empty and pd.notnull(df_real.iloc[0,0]) else 0
-df_real_ant = run_query(engine, f"SELECT SUM(total_viagens) as qtd FROM public.vw_resumo_viagens WHERE data >= '{dt_start_ant}' AND data <= '{dt_end_ant}'")
-val_real_ant = df_real_ant.iloc[0,0] if not df_real_ant.empty and pd.notnull(df_real_ant.iloc[0,0]) else 0
-with c_kpi3:
-    with st.container(border=True):
-        st.metric("Viagens Realizadas", f"{val_real:,.0f}", delta=calc_delta(val_real, val_real_ant))
-        df_dl_real = run_query(engine, f"SELECT data, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_real, "evolucao_diaria_viagens_real")
-
-# Gráficos de Demanda e Receita
-col_chart, col_map = st.columns([2, 1])
-with col_chart:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title'>📈 Análise Evolutiva</div>", unsafe_allow_html=True)
-        col_sel1, col_sel2 = st.columns([1, 2])
-        with col_sel1:
-            grafico_selecionado = st.selectbox("Selecione o Indicador:", ["Passageiros", "Receita", "Viagens Realizadas", "Ocultar Gráfico"], label_visibility="collapsed")
-
-        if grafico_selecionado != "Ocultar Gráfico":
-            with col_sel2:
-                filters_comp = get_date_filter_ui("operacao_comp", show_labels=False)
-                nome_comp = f"{filters_comp['mes_nome']}/{filters_comp['ano']}"
+        cs1, cs2, cs3 = st.columns([1.5, 1.5, 1.5])
+        with cs1: st.markdown("<div class='pbi-title'>📈 Análise Evolutiva</div>", unsafe_allow_html=True)
+        with cs2: ind_sel = st.selectbox("", ["Passageiros", "Receita", "Viagens"], label_visibility="collapsed")
+        with cs3: 
+            filters_comp = get_date_filter_ui("operacao_comp", show_labels=False)
+            nome_comp = f"{filters_comp['mes_nome']}/{filters_comp['ano']}"
+        
+        nome_atual = f"{filters['mes_nome']}/{filters['ano']}"
+        col_db = {'Passageiros': 'total_passageiros', 'Receita': 'receita_total', 'Viagens': 'total_viagens'}
+        tb_db = 'vw_resumo_viagens' if ind_sel == 'Viagens' else 'vw_resumo_bilhetagem'
+        
+        q_evo = f"SELECT EXTRACT(DAY FROM data) as dia, SUM({col_db[ind_sel]}) as qtd FROM public.{tb_db} WHERE data BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1"
+        q_comp = f"SELECT EXTRACT(DAY FROM data) as dia, SUM({col_db[ind_sel]}) as qtd FROM public.{tb_db} WHERE data BETWEEN '{filters_comp['dt_start']}' AND '{filters_comp['dt_end']}' GROUP BY 1"
+        
+        df_evo = run_query(engine, q_evo)
+        df_comp_evo = run_query(engine, q_comp)
+        
+        dfs = []
+        if not df_evo.empty:
+            df_evo['Período'] = f"Atual ({nome_atual})"
+            dfs.append(df_evo)
+        if not df_comp_evo.empty:
+            df_comp_evo['Período'] = f"Comp. ({nome_comp})"
+            dfs.append(df_comp_evo)
             
-            nome_atual = f"{filters['mes_nome']}/{filters['ano']}"
-            
-            if grafico_selecionado == 'Passageiros':
-                q_evo = f"SELECT EXTRACT(DAY FROM data) as dia, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1"
-                q_comp = f"SELECT EXTRACT(DAY FROM data) as dia, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters_comp['dt_start']}' AND data <= '{filters_comp['dt_end']}' GROUP BY 1"
-            elif grafico_selecionado == 'Receita':
-                q_evo = f"SELECT EXTRACT(DAY FROM data) as dia, SUM(receita_total) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1"
-                q_comp = f"SELECT EXTRACT(DAY FROM data) as dia, SUM(receita_total) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters_comp['dt_start']}' AND data <= '{filters_comp['dt_end']}' GROUP BY 1"
-            else:
-                q_evo = f"SELECT EXTRACT(DAY FROM data) as dia, SUM(total_viagens) as qtd FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1"
-                q_comp = f"SELECT EXTRACT(DAY FROM data) as dia, SUM(total_viagens) as qtd FROM public.vw_resumo_viagens WHERE data >= '{filters_comp['dt_start']}' AND data <= '{filters_comp['dt_end']}' GROUP BY 1"
+        if dfs:
+            df_final = pd.concat(dfs).sort_values(by='dia')
+            fig_evo = px.line(df_final, x='dia', y='qtd', color='Período', color_discrete_sequence=['#00F2FE', '#FA709A'])
+            fig_evo.update_traces(line_shape='spline', marker=dict(size=6, color='#FFF'))
+            st.plotly_chart(apply_modern_layout(fig_evo, show_x=True, show_legend=True), use_container_width=True)
+            render_chart_footer(df_final, f"evolucao_{ind_sel.lower()}", fig_evo, f"Análise Evolutiva: {ind_sel}", "exp_evo")
 
-            df_evo = run_query(engine, q_evo)
-            df_comp_evo = run_query(engine, q_comp)
-            
-            dfs = []
-            if not df_evo.empty:
-                df_evo['Período'] = f"Atual ({nome_atual})"
-                dfs.append(df_evo)
-            if not df_comp_evo.empty:
-                df_comp_evo['Período'] = f"Comparação ({nome_comp})"
-                dfs.append(df_comp_evo)
-                
-            if dfs:
-                df_final = pd.concat(dfs).sort_values(by='dia')
-                fig = px.line(df_final, x='dia', y='qtd', color='Período', markers=True)
-                fig.update_layout(height=340, margin=dict(t=10, b=0, l=0, r=0), xaxis_title="", yaxis_title="Volume", legend=dict(orientation="h", y=-0.2, font=dict(color="#FFFFFF")), xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-                fig.update_xaxes(dtick=1)
-                st.plotly_chart(fig, use_container_width=True)
-                render_download_btn(df_final, f"evolucao_{grafico_selecionado.lower().replace(' ', '_')}")
-
-with col_map:
+with c_rx:
     with st.container(border=True):
-        st.markdown("<div class='pbi-title'>🗺️ Mapa da Linha 1</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height: 48px;'></div>", unsafe_allow_html=True) 
+        st.markdown("<div class='pbi-title'>🚈 Raio-X Integrado da Frota (Trens)</div>", unsafe_allow_html=True)
+        df_fkm = run_query(engine, f"SELECT id_trem::text as \"Trem\", SUM(km_total) as km FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1")
+        df_fin = run_query(engine, f"SELECT id_trem::text as \"Trem\", SUM(horas_indisp) as hr FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1")
+        df_fpr = run_query(engine, f"SELECT id_tue::text as \"Trem\", SUM(total_manutencoes) as prev FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND tipo_manutencao='PREVENTIVA' GROUP BY 1")
+        df_fco = run_query(engine, f"SELECT id_tue::text as \"Trem\", SUM(total_manutencoes) as corr FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND tipo_manutencao='CORRETIVA' GROUP BY 1")
+        
+        dfs = [df for df in [df_fkm, df_fin, df_fpr, df_fco] if not df.empty]
+        if dfs:
+            df_frota = reduce(lambda l, r: pd.merge(l, r, on='Trem', how='outer'), dfs).fillna(0)
+            df_frota['Trem'] = "T" + df_frota['Trem']
+            st.dataframe(
+                df_frota,
+                column_config={
+                    "Trem": st.column_config.TextColumn("Trem"),
+                    "km": st.column_config.ProgressColumn("KM Total", format="%d", min_value=0, max_value=df_frota['km'].max()),
+                    "hr": st.column_config.ProgressColumn("Indisp (h)", format="%d", min_value=0, max_value=df_frota['hr'].max()),
+                    "prev": st.column_config.ProgressColumn("Preventivas", format="%d", min_value=0, max_value=df_frota['prev'].max()),
+                    "corr": st.column_config.ProgressColumn("Corretivas", format="%d", min_value=0, max_value=df_frota['corr'].max()),
+                }, hide_index=True, use_container_width=True, height=185
+            )
+            render_download_btn(df_frota, "raio_x_frota")
 
-        map_data = pd.DataFrame([{'Estação': 'Eldorado', 'lat': -19.93796, 'lon': -44.02777}, {'Estação': 'Cidade Industrial', 'lat': -19.94444, 'lon': -44.01322}, {'Estação': 'Vila Oeste', 'lat': -19.93811, 'lon': -44.00130}, {'Estação': 'Gameleira', 'lat': -19.92728, 'lon': -43.98730}, {'Estação': 'Calafate', 'lat': -19.92184, 'lon': -43.96960}, {'Estação': 'Carlos Prates', 'lat': -19.91700, 'lon': -43.95556}, {'Estação': 'Lagoinha', 'lat': -19.91251, 'lon': -43.94117}, {'Estação': 'Central', 'lat': -19.91693, 'lon': -43.93288}, {'Estação': 'Santa Efigênia', 'lat': -19.91952, 'lon': -43.92211}, {'Estação': 'Santa Tereza', 'lat': -19.91730, 'lon': -43.91187}, {'Estação': 'Horto', 'lat': -19.90555, 'lon': -43.91310}, {'Estação': 'Santa Inês', 'lat': -19.89472, 'lon': -43.90895}, {'Estação': 'José Cândido', 'lat': -19.88302, 'lon': -43.91330}, {'Estação': 'Minas Shopping', 'lat': -19.87193, 'lon': -43.92511}, {'Estação': 'São Gabriel', 'lat': -19.86256, 'lon': -43.92547}, {'Estação': 'Primeiro de Maio', 'lat': -19.85729, 'lon': -43.93402}, {'Estação': 'Waldomiro Lobo', 'lat': -19.84781, 'lon': -43.93265}, {'Estação': 'Floramar', 'lat': -19.83290, 'lon': -43.94025}, {'Estação': 'Vilarinho', 'lat': -19.81974, 'lon': -43.94783}])
+# ==========================================
+# FILEIRA 2: Estações, Oferta/Demanda e Turnos
+# ==========================================
+c_ve, c_odi, c_odv, c_tu = st.columns([2.5, 2.5, 2.5, 2.5])
 
-        q_map_vol = f"SELECT id_estacao, SUM(total_passageiros) as volume FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1"
-        df_map_vol = run_query(engine, q_map_vol)
-
-        if not df_map_vol.empty:
-            df_map_vol['id_estacao'] = pd.to_numeric(df_map_vol['id_estacao'], errors='coerce')
-            df_map_vol['Estação'] = df_map_vol['id_estacao'].map(STATION_MAP)
-            map_data = pd.merge(map_data, df_map_vol[['Estação', 'volume']], on='Estação', how='left').fillna(0)
-        else:
-            map_data['volume'] = 0
-
-        max_vol = map_data['volume'].max()
-        map_data['marker_size'] = (map_data['volume'] / max_vol * 22) + 6 if max_vol > 0 else 10
-        map_data['volume_fmt'] = map_data['volume'].apply(lambda x: f"{int(x):,}").str.replace(',', '.')
-
-        fig_map = px.line_map(map_data, lat="lat", lon="lon", zoom=9.8, height=340, color_discrete_sequence=["#3498db"])
-        fig_map.add_trace(go.Scattermap(lat=map_data['lat'], lon=map_data['lon'], mode='markers+text', marker=go.scattermap.Marker(size=map_data['marker_size'], color='#2ecc71', opacity=0.8), text=map_data['Estação'], textposition="top right", customdata=map_data[['Estação', 'volume_fmt']], hovertemplate="<b>%{customdata[0]}</b><br>Fluxo: %{customdata[1]}<extra></extra>"))
-        fig_map.update_layout(map_style="carto-positron", margin={"r":0,"t":0,"l":0,"b":0}, showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_map, use_container_width=True)
-        render_download_btn(map_data, "dados_mapa_estacoes")
-
-# Volume por Estação e Mix de Pagamento
-col_c1, col_c2 = st.columns(2)
-with col_c1:
+with c_ve:
     with st.container(border=True):
         st.markdown("<div class='pbi-title'>🏆 Volume por Estação</div>", unsafe_allow_html=True)
-        df_rank = run_query(engine, f"SELECT id_estacao, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 2 DESC")
+        df_rank = run_query(engine, f"SELECT id_estacao, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1 ORDER BY 2 ")
         if not df_rank.empty:
             df_rank = map_stations(df_rank, 'id_estacao', STATION_MAP)
-            fig_r = px.bar(df_rank, x='qtd', y='id_estacao', orientation='h', color='qtd', color_continuous_scale='Viridis')
-            fig_r.update_layout(height=350, margin=dict(t=10, b=0, l=0, r=0), yaxis_title="", xaxis_title="Passageiros", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_r, use_container_width=True)
-            render_download_btn(df_rank, "volume_por_estacao")
+            fig_r = px.bar(df_rank, x='qtd', y='id_estacao', orientation='h', color='qtd', color_continuous_scale='Tealgrn')
+            fig_r.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(apply_modern_layout(fig_r), use_container_width=True)
+            render_chart_footer(df_rank, "volume_por_estacao", fig_r, "Volume de Validações por Estação", "exp_rank")
 
-with col_c2:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title'>💳 Mix de Pagamento (Receita)</div>", unsafe_allow_html=True)
-        df_pgto = run_query(engine, f"SELECT forma_pgto, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 2 DESC LIMIT 10")
-        if not df_pgto.empty:
-            fig_p = px.pie(df_pgto, values='qtd', names='forma_pgto', hole=0.4)
-            fig_p.update_layout(height=350, margin=dict(t=10, b=10, l=0, r=0), legend=dict(orientation="h", y=-0.2, font=dict(color="#FFFFFF")), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_p, use_container_width=True)
-            render_download_btn(df_pgto, "mix_de_pagamento")
+# Lógica compartilhada Demanda x Oferta
+CAP = 1000
+num_dias = (datetime.strptime(dt_e, '%Y-%m-%d') - datetime.strptime(dt_s, '%Y-%m-%d')).days + 1
+df_dem = run_query(engine, f"SELECT hora, id_estacao, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1, 2")
+if not df_dem.empty:
+    df_dem['id_estacao'] = pd.to_numeric(df_dem['id_estacao'], errors='coerce').fillna(10)
+    df_dem['peso_ida'] = ((19 - df_dem['id_estacao']) / 10.0).clip(0, 1)
+    df_dem['peso_volta'] = ((df_dem['id_estacao'] - 1) / 10.0).clip(0, 1)
+    df_dem['pax_ida'], df_dem['pax_volta'] = df_dem['qtd'] * df_dem['peso_ida'], df_dem['qtd'] * df_dem['peso_volta']
+    df_dem_agg = df_dem.groupby('hora')[['pax_ida', 'pax_volta']].sum().reset_index()
+else: df_dem_agg = pd.DataFrame(columns=['hora', 'pax_ida', 'pax_volta'])
 
-
-# ==========================================
-# BLOCO 2: OPERAÇÃO E NÍVEL DE SERVIÇO
-# ==========================================
-st.markdown("<div class='section-title'>🚆 Operação e Nível de Serviço</div>", unsafe_allow_html=True)
-
-c_kpi4, c_espaco1, c_espaco2 = st.columns(3)
-
-# KPI 4: Tempo Médio
-q_tempo = f"SELECT SUM(tempo_medio_minutos * total_viagens) / NULLIF(SUM(total_viagens), 0) as tmp FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND tipo_real = 6 AND dia_semana in (1,2,3,4,5) AND ((hora >= 6 AND hora < 8) OR (hora >= 17 AND hora < 19))"
-df_tempo = run_query(engine, q_tempo)
-val_tempo = df_tempo.iloc[0,0] if not df_tempo.empty and pd.notnull(df_tempo.iloc[0,0]) else 0
-df_tempo_ant = run_query(engine, q_tempo.replace(filters['dt_start'], dt_start_ant).replace(filters['dt_end'], dt_end_ant))
-val_tempo_ant = df_tempo_ant.iloc[0,0] if not df_tempo_ant.empty and pd.notnull(df_tempo_ant.iloc[0,0]) else 0
-with c_kpi4:
-    with st.container(border=True):
-        st.metric("Tempo Médio (Pico)", f"{val_tempo:.1f} min", delta=calc_delta(val_tempo, val_tempo_ant), delta_color="inverse")
-        df_dl_tempo = run_query(engine, f"SELECT data, SUM(tempo_medio_minutos * total_viagens) / NULLIF(SUM(total_viagens), 0) as tempo_medio FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND tipo_real = 6 AND dia_semana in (1,2,3,4,5) AND ((hora >= 6 AND hora < 8) OR (hora >= 17 AND hora < 19)) GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_tempo, "evolucao_diaria_tempo_pico")
-
-# Gráficos de Oferta x Demanda
-CAPACIDADE_TREM = 1000
-q_oferta_ida = f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND (origem = 'Eldorado' OR origem = 'ELD') AND (destino = 'VRO' OR destino = 'ELD') AND tipo_real = 6 GROUP BY 1"
-q_oferta_volta = f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND (origem = 'Vilarinho' OR origem = 'VRO') AND (destino = 'VRO' OR destino = 'ELD') AND tipo_real = 6 GROUP BY 1"
-q_demanda_dir = f"SELECT hora, id_estacao, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1, 2"
-
-df_ida = run_query(engine, q_oferta_ida)
-df_volta = run_query(engine, q_oferta_volta)
-df_demanda_dir = run_query(engine, q_demanda_dir)
-num_dias = (datetime.strptime(filters['dt_end'], '%Y-%m-%d') - datetime.strptime(filters['dt_start'], '%Y-%m-%d')).days + 1
-
-if not df_demanda_dir.empty:
-    df_demanda_dir['id_estacao'] = pd.to_numeric(df_demanda_dir['id_estacao'], errors='coerce').fillna(10)
-    df_demanda_dir['peso_ida'] = ((19 - df_demanda_dir['id_estacao']) / 10.0).clip(0, 1)
-    df_demanda_dir['peso_volta'] = ((df_demanda_dir['id_estacao'] - 1) / 10.0).clip(0, 1)
-    df_demanda_dir['pax_ida'] = df_demanda_dir['qtd'] * df_demanda_dir['peso_ida']
-    df_demanda_dir['pax_volta'] = df_demanda_dir['qtd'] * df_demanda_dir['peso_volta']
-    df_demanda_agg = df_demanda_dir.groupby('hora')[['pax_ida', 'pax_volta']].sum().reset_index()
-else:
-    df_demanda_agg = pd.DataFrame(columns=['hora', 'pax_ida', 'pax_volta'])
-
-col_ida, col_volta = st.columns(2)
-with col_ida:
+with c_odi:
     with st.container(border=True):
         st.markdown("<div class='pbi-title'>➡️ Oferta x Demanda (Ida)</div>", unsafe_allow_html=True)
-        if not df_ida.empty and not df_demanda_agg.empty:
-            df_comb_ida = pd.merge(df_ida, df_demanda_agg, on='hora', how='outer').fillna(0)
-            # Arredondando viagens por dia PRIMEIRO e só depois multiplicando por 1000
-            df_comb_ida['cap_media'] = (df_comb_ida['viagens'] / num_dias).round(0) * CAPACIDADE_TREM
-            df_comb_ida['pax_estimado'] = (df_comb_ida['pax_ida'] / num_dias).round(0) 
-            fig_ida = go.Figure()
-            fig_ida.add_trace(go.Bar(x=df_comb_ida['hora'], y=df_comb_ida['cap_media'], name='Oferta', marker_color='rgba(46, 204, 113, 0.4)'))
-            fig_ida.add_trace(go.Scatter(x=df_comb_ida['hora'], y=df_comb_ida['pax_estimado'], name='Demanda', mode='lines+markers', line=dict(color='#e74c3c')))
-            fig_ida.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), legend=dict(orientation="h", y=-0.2, font=dict(color="#FFFFFF")), xaxis_title="Hora do Dia", yaxis_title="Passageiros / Lugares", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_ida, use_container_width=True)
-            render_download_btn(df_comb_ida, "oferta_demanda_ida")
+        df_ida = run_query(engine, f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND origem IN ('Eldorado','ELD') AND destino IN ('VRO','ELD') AND tipo_real=6 GROUP BY 1")
+        if not df_ida.empty and not df_dem_agg.empty:
+            df_c_ida = pd.merge(df_ida, df_dem_agg, on='hora', how='outer').fillna(0).sort_values('hora')
+            fig_i = go.Figure()
+            fig_i.add_trace(go.Bar(x=df_c_ida['hora'], y=(df_c_ida['viagens']/num_dias).round(0)*CAP, name='Oferta', marker_color='rgba(46, 204, 113, 0.4)', marker_line_color='#2ecc71', marker_line_width=1))
+            fig_i.add_trace(go.Scatter(x=df_c_ida['hora'], y=(df_c_ida['pax_ida']/num_dias).round(0), name='Demanda', line=dict(color='#FA709A', width=3, shape='spline'), fill='tozeroy', fillcolor='rgba(250, 112, 154, 0.1)'))
+            st.plotly_chart(apply_modern_layout(fig_i, show_x=True, show_legend=True), use_container_width=True)
+            render_chart_footer(df_c_ida, "oferta_demanda_ida", fig_i, "Oferta x Demanda (Ida)", "exp_ida")
 
-with col_volta:
+with c_odv:
     with st.container(border=True):
         st.markdown("<div class='pbi-title'>⬅️ Oferta x Demanda (Volta)</div>", unsafe_allow_html=True)
-        if not df_volta.empty and not df_demanda_agg.empty:
-            df_comb_volta = pd.merge(df_volta, df_demanda_agg, on='hora', how='outer').fillna(0)
-            # Arredondando viagens por dia PRIMEIRO e só depois multiplicando por 1000
-            df_comb_volta['cap_media'] = (df_comb_volta['viagens'] / num_dias).round(0) * CAPACIDADE_TREM
-            df_comb_volta['pax_estimado'] = (df_comb_volta['pax_volta'] / num_dias).round(0)
-            fig_volta = go.Figure()
-            fig_volta.add_trace(go.Bar(x=df_comb_volta['hora'], y=df_comb_volta['cap_media'], name='Oferta', marker_color='rgba(52, 152, 219, 0.4)'))
-            fig_volta.add_trace(go.Scatter(x=df_comb_volta['hora'], y=df_comb_volta['pax_estimado'], name='Demanda', mode='lines+markers', line=dict(color='#e67e22')))
-            fig_volta.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), legend=dict(orientation="h", y=-0.2, font=dict(color="#FFFFFF")), xaxis_title="Hora do Dia", yaxis_title="", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_volta, use_container_width=True)
-            render_download_btn(df_comb_volta, "oferta_demanda_volta")
+        df_vol = run_query(engine, f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND origem IN ('Vilarinho','VRO') AND destino IN ('VRO','ELD') AND tipo_real=6 GROUP BY 1")
+        if not df_vol.empty and not df_dem_agg.empty:
+            df_c_vol = pd.merge(df_vol, df_dem_agg, on='hora', how='outer').fillna(0).sort_values('hora')
+            fig_v = go.Figure()
+            fig_v.add_trace(go.Bar(x=df_c_vol['hora'], y=(df_c_vol['viagens']/num_dias).round(0)*CAP, name='Oferta', marker_color='rgba(52, 152, 219, 0.4)', marker_line_color='#3498db', marker_line_width=1))
+            fig_v.add_trace(go.Scatter(x=df_c_vol['hora'], y=(df_c_vol['pax_volta']/num_dias).round(0), name='Demanda', line=dict(color='#FEE140', width=3, shape='spline'), fill='tozeroy', fillcolor='rgba(254, 225, 64, 0.1)'))
+            st.plotly_chart(apply_modern_layout(fig_v, show_x=True, show_legend=True), use_container_width=True)
+            render_chart_footer(df_c_vol, "oferta_demanda_volta", fig_v, "Oferta x Demanda (Volta)", "exp_vol")
 
-# Headway Médio e Fluxo Manhã vs Tarde na mesma linha
-# Headway Médio (Ocupando a largura total)
-with st.container(border=True):
-    st.markdown("<div class='pbi-title'>🕒 Headway Médio por Origem</div>", unsafe_allow_html=True)
-    q_hw = f"""
-    SELECT 
-        hora, 
-        origem,
-        ROUND(AVG(headway)::numeric, 2) as headway 
-    FROM public.vw_headway_diario_hora 
-    WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND ORIGEM IN ('Eldorado', 'ELD', 'Vilarinho', 'VRO')
-    GROUP BY 1, 2
-    ORDER BY 1, 2;
-    """
-    df_hw = run_query(engine, q_hw)
-    if not df_hw.empty:
-        df_hw['headway_texto'] = df_hw['headway'].apply(lambda x: f"{int(x)}m {int((x * 60) % 60):02d}s")
-        
-        fig_hw = px.line(df_hw, x='hora', y='headway', color='origem', markers=True, text='headway_texto')
-        fig_hw.update_traces(textposition="top center", textfont=dict(color="#FFFFFF"))
-        
-        fig_hw.update_layout(
-            height=350, 
-            margin=dict(l=0, r=0, t=10, b=0), 
-            legend=dict(orientation="h", y=-0.2, font=dict(color="#FFFFFF"), title=None), 
-            xaxis_title="Hora do Dia", 
-            yaxis_title="Tempo de Intervalo", 
-            xaxis=dict(color="#FFFFFF", tickmode='linear'), 
-            yaxis=dict(color="#FFFFFF"), 
-            paper_bgcolor="rgba(0,0,0,0)", 
-            plot_bgcolor="rgba(0,0,0,0)"
-        )
-        st.plotly_chart(fig_hw, use_container_width=True)
-        render_download_btn(df_hw, "headway_medio_por_origem")
-
-# Fluxo Manhã vs Tarde (Ocupando a largura total)
-with st.container(border=True):
-    st.markdown("<div class='pbi-title'>☀️/🌙 Fluxo Manhã vs Tarde</div>", unsafe_allow_html=True)
-    q_turno = f"""SELECT id_estacao, CASE WHEN hora < 12 THEN 'Manhã' ELSE 'Tarde' END as turno, SUM(total_passageiros) as qtd
-                  FROM public.vw_resumo_bilhetagem WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1, 2 ORDER BY 1, 2"""
-    df_turno = run_query(engine, q_turno)
-    if not df_turno.empty:
+with c_tu:
+    with st.container(border=True):
+        st.markdown("<div class='pbi-title'>☀️/🌙 Fluxo Turnos</div>", unsafe_allow_html=True)
+        df_turno = run_query(engine, f"SELECT id_estacao, CASE WHEN hora < 12 THEN 'Manhã' ELSE 'Tarde' END as turno, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1, 2 ORDER BY 1, 2")
+        if not df_turno.empty:
             df_turno = map_stations(df_turno, 'id_estacao', STATION_MAP)
-            fig_turno = px.bar(df_turno, x='id_estacao', y='qtd', color='turno', barmode='group')
-            fig_turno.update_layout(height=350, margin=dict(t=10, b=0, l=0, r=0), legend=dict(font=dict(color="#FFFFFF")), xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_turno, use_container_width=True)
-            render_download_btn(df_turno, "fluxo_turnos")
-
+            fig_t = px.bar(df_turno, x='id_estacao', y='qtd', color='turno', barmode='group', color_discrete_sequence=['#00F2FE', '#FA709A'])
+            st.plotly_chart(apply_modern_layout(fig_t, show_legend=True), use_container_width=True)
+            render_chart_footer(df_turno, "fluxo_turnos", fig_t, "Fluxo Manhã vs Tarde", "exp_tur")
 
 # ==========================================
-# BLOCO 3: FROTA, MANUTENÇÃO E OCORRÊNCIAS
+# FILEIRA 3: Headway, Ocorrências e Mix Pgto
 # ==========================================
-st.markdown("<div class='section-title'>🛠️ Frota, Manutenção e Ocorrências</div>", unsafe_allow_html=True)
+c_hw, c_oc, c_mx = st.columns([4, 3.5, 2.5])
 
-c_kpi5, c_kpi8, c_kpi7, c_kpi6 = st.columns(4)
-
-# KPI 5: KM Percorrida
-df_mkbf = run_query(engine, f"SELECT SUM(km_total) as km FROM public.vw_resumo_frota WHERE mes_ref >= '{filters['dt_start']}' AND mes_ref <= '{filters['dt_end']}'")
-km = df_mkbf.iloc[0]['km'] if not df_mkbf.empty and pd.notnull(df_mkbf.iloc[0]['km']) else 0
-df_mkbf_ant = run_query(engine, f"SELECT SUM(km_total) as km FROM public.vw_resumo_frota WHERE mes_ref >= '{dt_start_ant}' AND mes_ref <= '{dt_end_ant}'")
-km_ant = df_mkbf_ant.iloc[0]['km'] if not df_mkbf_ant.empty and pd.notnull(df_mkbf_ant.iloc[0]['km']) else 0
-with c_kpi5:
+with c_hw:
     with st.container(border=True):
-        st.metric("Total KM Percorrida", f"{km:,.0f} KM".replace(",", "."), delta=calc_delta(km, km_ant))
-        df_dl_km = run_query(engine, f"SELECT mes_ref as data, SUM(km_total) as km FROM public.vw_resumo_frota WHERE mes_ref >= '{filters['dt_start']}' AND mes_ref <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_km, "evolucao_diaria_km")
+        st.markdown("<div class='pbi-title'>🕒 Headway Médio por Origem (Eldorado vs Vilarinho)</div>", unsafe_allow_html=True)
+        df_hw = run_query(engine, f"SELECT hora, origem, ROUND(AVG(headway)::numeric, 2) as hw FROM public.vw_headway_diario_hora WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND ORIGEM IN ('Eldorado', 'ELD', 'Vilarinho', 'VRO') GROUP BY 1, 2 ORDER BY 1, 2")
+        if not df_hw.empty:
+            df_hw['origem'] = df_hw['origem'].replace({'Eldorado':'ELD', 'Vilarinho':'VRO'})
+            fig_h = px.line(df_hw, x='hora', y='hw', color='origem')
+            fig_h.update_traces(line_shape='spline', line_width=3, marker=dict(size=6))
+            st.plotly_chart(apply_modern_layout(fig_h, show_x=True, show_legend=True), use_container_width=True)
+            render_chart_footer(df_hw, "headway_medio", fig_h, "Headway Médio por Origem", "exp_hw")
 
-# KPI 8: Indisponibilidade
-df_indisp_total = run_query(engine, f"SELECT SUM(horas_indisp) as horas FROM public.vw_resumo_frota WHERE mes_ref >= '{filters['dt_start']}' AND mes_ref <= '{filters['dt_end']}'")
-val_indisp = df_indisp_total.iloc[0,0] if not df_indisp_total.empty and pd.notnull(df_indisp_total.iloc[0,0]) else 0
-df_indisp_ant = run_query(engine, f"SELECT SUM(horas_indisp) as horas FROM public.vw_resumo_frota WHERE mes_ref >= '{dt_start_ant}' AND mes_ref <= '{dt_end_ant}'")
-val_indisp_ant = df_indisp_ant.iloc[0,0] if not df_indisp_ant.empty and pd.notnull(df_indisp_ant.iloc[0,0]) else 0
-with c_kpi8:
+with c_oc:
     with st.container(border=True):
-        st.metric("Indisponibilidade(H)", f"{val_indisp:,.0f} h", delta=calc_delta(val_indisp, val_indisp_ant), delta_color="inverse")
-        df_dl_indisp = run_query(engine, f"SELECT mes_ref as data, SUM(horas_indisp) as horas_indisponiveis FROM public.vw_resumo_frota WHERE mes_ref >= '{filters['dt_start']}' AND mes_ref <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_indisp, "evolucao_diaria_indisponibilidade")
-
-# KPI 7: Manutenções
-df_manut = run_query(engine, f"SELECT SUM(total_manutencoes) as qtd FROM public.vw_resumo_manutencao WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}'")
-val_manut = df_manut.iloc[0,0] if not df_manut.empty and pd.notnull(df_manut.iloc[0,0]) else 0
-df_manut_ant = run_query(engine, f"SELECT SUM(total_manutencoes) as qtd FROM public.vw_resumo_manutencao WHERE data >= '{dt_start_ant}' AND data <= '{dt_end_ant}'")
-val_manut_ant = df_manut_ant.iloc[0,0] if not df_manut_ant.empty and pd.notnull(df_manut_ant.iloc[0,0]) else 0
-with c_kpi7:
-    with st.container(border=True):
-        st.metric("Registros Manutenção", f"{val_manut:,.0f}", delta=calc_delta(val_manut, val_manut_ant), delta_color="inverse")
-        df_dl_manut = run_query(engine, f"SELECT data, SUM(total_manutencoes) as manutencoes FROM public.vw_resumo_manutencao WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_manut, "evolucao_diaria_manutencoes")
-
-# KPI 6: Ocorrências
-df_ocorr = run_query(engine, f"SELECT SUM(total_ocorrencias) as qtd FROM public.vw_resumo_ocorrencias WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}'")
-val_ocorr = df_ocorr.iloc[0,0] if not df_ocorr.empty and pd.notnull(df_ocorr.iloc[0,0]) else 0
-df_ocorr_ant = run_query(engine, f"SELECT SUM(total_ocorrencias) as qtd FROM public.vw_resumo_ocorrencias WHERE data >= '{dt_start_ant}' AND data <= '{dt_end_ant}'")
-val_ocorr_ant = df_ocorr_ant.iloc[0,0] if not df_ocorr_ant.empty and pd.notnull(df_ocorr_ant.iloc[0,0]) else 0
-with c_kpi6:
-    with st.container(border=True):
-        st.metric("Total de Ocorrências", f"{val_ocorr:,.0f}", delta=calc_delta(val_ocorr, val_ocorr_ant), delta_color="inverse")
-        df_dl_ocorr = run_query(engine, f"SELECT data, SUM(total_ocorrencias) as ocorrencias FROM public.vw_resumo_ocorrencias WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 1")
-        render_download_btn(df_dl_ocorr, "evolucao_diaria_ocorrencias")
-
-# Gráficos de Frota e Ocorrências
-col_f1, col_f2, col_f3 = st.columns(3)
-
-df_frota_km = run_query(engine, f"SELECT id_trem, SUM(km_total) as prod_km FROM public.vw_resumo_frota WHERE mes_ref >= '{filters['dt_start']}' AND mes_ref <= '{filters['dt_end']}' GROUP BY 1")
-
-with col_f1:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title'>🔝 Operação (KM)</div>", unsafe_allow_html=True)
-        if not df_frota_km.empty:
-            df_top_op = df_frota_km.sort_values('prod_km', ascending=False).head(10)
-            df_top_op['Trem'] = "T" + df_top_op['id_trem'].astype(str)
-            fig_top = px.bar(df_top_op, x='Trem', y='prod_km', color_discrete_sequence=['#2ecc71'])
-            fig_top.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), xaxis_title="", yaxis_title="Quilometragem", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_top, use_container_width=True)
-            render_download_btn(df_top_op, "operacao_km")
-        
-with col_f2:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title'>📉 Indisponível (Horas)</div>", unsafe_allow_html=True)
-        df_indisp = run_query(engine, f"SELECT id_trem, SUM(horas_indisp) as horas FROM public.vw_resumo_frota WHERE mes_ref >= '{filters['dt_start']}' AND mes_ref <= '{filters['dt_end']}' GROUP BY 1 ORDER BY 2 DESC LIMIT 10")
-        if not df_indisp.empty:
-            df_indisp['Trem'] = "T" + df_indisp['id_trem'].astype(str)
-            fig_ind = px.bar(df_indisp, x='Trem', y='horas', color_discrete_sequence=['#e74c3c'])
-            fig_ind.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), xaxis_title="", yaxis_title="Horas Paradas", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_ind, use_container_width=True)
-            render_download_btn(df_indisp, "indisponivel_horas")
-
-with col_f3:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title'>⚠️ Top Ocorrências</div>", unsafe_allow_html=True)
-        df_inc = run_query(engine, f"SELECT subtipo, SUM(total_ocorrencias) as qtd FROM public.vw_resumo_ocorrencias WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND subtipo NOT LIKE 'RECLAMAÇÃO' GROUP BY 1 ORDER BY 2 DESC LIMIT 10")
+        st.markdown("<div class='pbi-title'>⚠️ Top Ocorrências Operacionais</div>", unsafe_allow_html=True)
+        df_inc = run_query(engine, f"SELECT subtipo, SUM(total_ocorrencias) as qtd FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND subtipo NOT LIKE 'RECLAMAÇÃO' GROUP BY 1 ORDER BY 2 ASC LIMIT 6")
         if not df_inc.empty:
-            fig_inc = px.bar(df_inc, x='subtipo', y='qtd', orientation='v')
-            fig_inc.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), xaxis_title="Tipo de Ocorrência", yaxis_title="Qtd", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_inc, use_container_width=True)
-            render_download_btn(df_inc, "top_ocorrencias")
+            fig_in = px.bar(df_inc, x='qtd', y='subtipo', orientation='h', color='qtd', color_continuous_scale='Reds')
+            fig_in.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(apply_modern_layout(fig_in), use_container_width=True)
+            render_chart_footer(df_inc, "top_ocorrencias", fig_in, "Ocorrências Operacionais Registradas", "exp_oco")
 
-col_m1, col_m2 = st.columns(2)
-with col_m1:
+with c_mx:
     with st.container(border=True):
-        st.markdown("<div class='pbi-title'>🔧 Prev. por Trem</div>", unsafe_allow_html=True)
-        df_prev = run_query(engine, f"SELECT id_tue, SUM(total_manutencoes) as qtd FROM public.vw_resumo_manutencao WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND tipo_manutencao = 'PREVENTIVA' GROUP BY 1 ORDER BY 2 DESC LIMIT 10")
-        if not df_prev.empty:
-            df_prev['Trem'] = "T" + df_prev['id_tue'].astype(str)
-            fig_prev = px.bar(df_prev, x='Trem', y='qtd', color_discrete_sequence=['#3498db'])
-            fig_prev.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), xaxis_title="", yaxis_title="Qtd Preventivas", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_prev, use_container_width=True)
-            render_download_btn(df_prev, "preventivas_por_trem")
-
-with col_m2:
-    with st.container(border=True):
-        st.markdown("<div class='pbi-title'>🚨 Corr. por Trem</div>", unsafe_allow_html=True)
-        df_corr = run_query(engine, f"SELECT id_tue, SUM(total_manutencoes) as qtd FROM public.vw_resumo_manutencao WHERE data >= '{filters['dt_start']}' AND data <= '{filters['dt_end']}' AND tipo_manutencao = 'CORRETIVA' GROUP BY 1 ORDER BY 2 DESC LIMIT 10")
-        if not df_corr.empty:
-            df_corr['Trem'] = "T" + df_corr['id_tue'].astype(str)
-            fig_corr = px.bar(df_corr, x='Trem', y='qtd', color_discrete_sequence=['#9b59b6'])
-            fig_corr.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), xaxis_title="", yaxis_title="Qtd Corretivas", xaxis=dict(color="#FFFFFF"), yaxis=dict(color="#FFFFFF"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_corr, use_container_width=True)
-            render_download_btn(df_corr, "corretivas_por_trem")
-
-st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div class='pbi-title'>💳 Mix Receita</div>", unsafe_allow_html=True)
+        df_pgto = run_query(engine, f"SELECT tipo_bilhetagem as forma_pgto, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}' GROUP BY 1 ORDER BY 2 DESC LIMIT 15")
+        if not df_pgto.empty:
+            fig_p = px.pie(df_pgto, values='qtd', names='forma_pgto', hole=0.6, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_p.update_traces(textposition='inside', textinfo='percent')
+            st.plotly_chart(apply_modern_layout(fig_p, show_legend=True), use_container_width=True)
+            render_chart_footer(df_pgto, "mix_de_pagamento", fig_p, "Mix de Pagamento (Proporção da Receita)", "exp_mix")

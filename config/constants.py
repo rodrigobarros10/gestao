@@ -16,8 +16,7 @@ ALL_TABS = [
     "sql_scripts", 
     "operacao", 
     "indicadores", 
-    "numeros",
-    "ia_avancada"
+    "numeros"
 ]
 
 TABLES_CONFIG = {

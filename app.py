@@ -8,10 +8,92 @@ from utils.helpers import get_base64_of_bin_file
 from components.ui_elements import load_custom_css
 
 # --- INITIAL SETUP ---
-st.set_page_config(page_title="GESTÃO METRO BH", layout="wide", page_icon="🚇")
-pio.templates.default = "plotly_dark"
+st.set_page_config(page_title="DATA TREM | Metro BH", layout="wide", page_icon="🚇")
+pio.templates.default = "plotly_dark" # Padrão escuro das outras páginas
 img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
 load_custom_css(img_base64)
+
+# --- INJEÇÃO DE CSS GLOBAL & DARK GLASSMORPHISM ---
+st.markdown(f"""
+<style>
+/* Fundo da aplicação com a imagem e Overlay Escuro Transparente */
+[data-testid="stAppViewContainer"] {{
+    background-image: url('data:image/jpeg;base64,{img_base64}');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}}
+[data-testid="stAppViewContainer"] > .main {{
+    background-color: rgba(14, 17, 23, 0.80); /* Overlay escuro e transparente */
+}}
+
+/* Escondendo cabeçalho padrão para um visual mais limpo */
+header {{ visibility: hidden; height: 0px; }}
+.block-container {{ padding-top: 3rem !important; max-width: 98%; }}
+
+/* Estilização Geral de Textos */
+h1, h2, h3, h4, p {{ font-family: 'Segoe UI', sans-serif; color: #FFFFFF; }}
+
+/* --- ESTILIZAÇÃO DO LOGIN --- */
+/* Formulário de Login flutuante (Dark Glassmorphism) */
+[data-testid="stForm"] {{
+    background: rgba(20, 20, 25, 0.6) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid #333 !important;
+    border-radius: 15px !important;
+    padding: 30px !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5) !important;
+}}
+
+/* Inputs do Login */
+.stTextInput > div > div > input {{
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    color: #FFFFFF !important;
+    border: 1px solid #444 !important;
+    border-radius: 8px !important;
+    padding: 10px 15px !important;
+    transition: all 0.3s ease;
+}}
+.stTextInput > div > div > input:focus {{
+    border-color: #00F2FE !important;
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.3) !important;
+}}
+
+/* --- ESTILIZAÇÃO DOS CARDS (BOTÕES) DO DASHBOARD --- */
+div.stButton > button {{
+    height: 130px;
+    border-radius: 12px;
+    background: rgba(20, 20, 25, 0.6);
+    backdrop-filter: blur(5px);
+    color: #FFFFFF;
+    border: 1px solid #333;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}}
+
+/* Efeito Hover nos Cards */
+div.stButton > button:hover {{
+    transform: translateY(-4px);
+    background: rgba(30, 30, 35, 0.8);
+    border: 1px solid #00F2FE; /* Borda Neon Azul/Ciano */
+    box-shadow: 0 8px 20px rgba(0, 242, 254, 0.15);
+    color: #00F2FE;
+}}
+
+/* Texto interno do Card */
+div.stButton > button p {{
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px;
+    margin: 0;
+}}
+</style>
+""", unsafe_allow_html=True)
 
 # --- SESSION STATE INITIALIZATION ---
 if 'permissions' not in st.session_state:
@@ -37,22 +119,30 @@ if 'db_loader' not in st.session_state:
         st.session_state['connected'] = False
 
 
-
-# --- LOGIN SCREEN ---
+# ==========================================================
+# --- TELA DE LOGIN ---
+# ==========================================================
 if not st.session_state['logged_in']:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        # Título personalizado em cinza escuro
-        st.markdown("<h1 style='text-align: center; color: #FFFFFF;'>🚇 DATA TREM</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #FFFFFF;'>Faça login para acessar o sistema</p>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True) 
+    col_l1, col_l2, col_l3 = st.columns([1.5, 2, 1.5])
+    
+    with col_l2:
+        st.markdown("""
+            <div style='text-align: center; margin-bottom: 20px;'>
+                <h1 style='color: #1A1A1D; font-size: 42px; font-weight: 800; letter-spacing: 2px; margin-bottom: 0px;'>🚉 DATA TREM</h1>
+                <p style='color: #1A1A1D; font-size: 16px; font-weight: 600;'>Portal de Inteligência Operacional • Metro BH</p>
+            </div>
+        """, unsafe_allow_html=True)
         
         if not st.session_state.get('connected'):
-            st.error("🔴 Banco de dados offline. Verifique as credenciais no .env")
+            st.error("🔴 Serviço de banco de dados indisponível. Contate a engenharia.")
         else:
             with st.form("login_form"):
-                username = st.text_input("Usuário")
-                password = st.text_input("Senha", type="password")
-                submit = st.form_submit_button("Entrar")
+                st.markdown("<p style='color: #FFFFFF; font-weight: 600; margin-bottom: 5px;'>Acesso Restrito</p>", unsafe_allow_html=True)
+                username = st.text_input("Usuário", placeholder="Insira sua credencial")
+                password = st.text_input("Senha", type="password", placeholder="••••••••")
+                st.markdown("<br>", unsafe_allow_html=True)
+                submit = st.form_submit_button("Autenticar ➔")
 
                 if submit:
                     auth = AuthService(st.session_state['db_loader'])
@@ -63,109 +153,69 @@ if not st.session_state['logged_in']:
                         st.session_state['current_role'] = user['role']
                         st.rerun()
                     else:
-                        st.error("Usuário ou senha incorretos.")
+                        st.error("⚠️ Credenciais inválidas. Tente novamente.")
     st.stop()
 
-# --- SIDEBAR & LOGOUT (Appears on all pages) ---
+
+# ==========================================================
+# --- SIDEBAR & LOGOUT ---
+# ==========================================================
 with st.sidebar:
-    st.markdown(f"👤 **Logado como:** `{st.session_state['current_user']}`")
-    st.markdown(f"🛡️ **Nível:** `{st.session_state['current_role']}`")
-    if st.button("🚪 Sair", use_container_width=True):
+    st.markdown("""
+        <div style='text-align: center; margin-bottom: 20px;'>
+            <h2 style='color: #00F2FE; font-weight: 800; letter-spacing: 1px; margin-bottom: 0;'>DATA TREM</h2>
+            <hr style='border-color: rgba(255,255,255,0.1); margin-top: 5px;'>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown(f"👤 **Operador:** <span style='color: #aaa;'>{st.session_state['current_user']}</span>", unsafe_allow_html=True)
+    st.markdown(f"🛡️ **Acesso:** <span style='color: #aaa;'>{st.session_state['current_role'].upper()}</span>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    if st.button("🚪 Encerrar Sessão", use_container_width=True):
         st.session_state['logged_in'] = False
         st.session_state['current_user'] = None
         st.session_state['current_role'] = None
         st.rerun()
-# --- HOMEPAGE / DASHBOARD CARDS (Visão Pós-Login) ---
+
+
+# ==========================================================
+# --- HOMEPAGE / DASHBOARD (Visão Pós-Login) ---
+# ==========================================================
 st.markdown("""
-    <h1 style='color: #4F4F4F; margin-bottom: 0px;'>🚇 Data Trem</h1>
-    <h4 style='color: #777777; margin-top: 0px; font-weight: normal;'>📍 Painel de Controle Operacional da Concessão Metro BH</h4>
-    <hr style='border: 1px solid #E0E0E0;'>
+    <div>
+        <h1 style='color: #1A1A1D; font-weight: 800; font-size: 36px; margin-bottom: 0px;'>Painel de Módulos</h1>
+        <h4 style='color: #1A1A1D; margin-top: 5px; font-weight: 600; font-size: 18px;'>Selecione um ambiente para iniciar a operação</h4>
+    </div>
+    <hr style='border: 1px solid rgba(255, 255, 255, 0.1); margin-top: 15px; margin-bottom: 30px;'>
 """, unsafe_allow_html=True)
 
-st.markdown("<p style='color: #5A5A5A; font-size: 16px;'>Selecione um dos módulos abaixo para acessar:</p>", unsafe_allow_html=True)
-
-
-# 1. Recupera as páginas permitidas para o usuário logado
-allowed_pages = st.session_state['permissions'].get(st.session_state['current_role'], [])
-
-# 2. Dicionário de Mapeamento: Arquivo -> Ícone de Metrô + Nome Amigável
+# Mapeamento: Arquivo -> Ícone + Nome Amigável
 PAGE_DISPLAY_NAMES = {
-    "carga_csv": "🚉 Carga de Dados",
-    "configuracoes": "🛠️ Configurações",
-    "sql_scripts": "🛤️ Scripts SQL",
     "operacao": "🕹️ Centro de Controle",
-    "indicadores": "🚥 Indicadores",
-    "numeros": "🎫  Números",
-    "ia_ml": "⚙️ Inteligência Operacional",
+    "indicadores": "🚥 Indicadores Operacionais",
+    "numeros": "📊 Metrô em Números",
+    "ia_ml": "🧠 Inteligência Artificial (IA)",
+    "carga_csv": "📤 Carga de Dados (CSV)",
+    "sql_scripts": "🛤️ Terminal SQL",
+    "configuracoes": "⚙️ Configurações",
     "documentacao": "🗺️ Documentação"
 }
 
-# 3. Injeção de CSS para Imagem de Fundo e Estilização dos Cards
-st.markdown(f"""
-<style>
-/* Aplicando a imagem de fundo na janela principal do app */
-[data-testid="stAppViewContainer"] {{
-    background-image: url('data:image/jpeg;base64,{img_base64}');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-}}
+allowed_pages = st.session_state['permissions'].get(st.session_state['current_role'], [])
 
-/* Escurecendo levemente o fundo principal para a imagem não ofuscar o texto (Overlay) */
-[data-testid="stAppViewContainer"] > .main {{
-    background-color: rgba(14, 17, 23, 0.85); 
-}}
+# Ordenar páginas para colocar as principais (operações) no topo, se existirem na permissão
+priority_order = ["operacao", "indicadores", "numeros", "ia_ml", "carga_csv", "sql_scripts", "configuracoes", "documentacao"]
+sorted_pages = [p for p in priority_order if p in allowed_pages] + [p for p in allowed_pages if p not in priority_order]
 
-/* Transformando os botões padrão do Streamlit em Cards estilizados */
-div.stButton > button {{
-    height: 140px;
-    border-radius: 15px;
-    background: rgba(40, 44, 52, 0.7); /* Efeito translúcido / Glassmorphism */
-    backdrop-filter: blur(8px);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    transition: all 0.3s ease-in-out;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}}
-
-/* Efeito ao passar o mouse por cima do Card (Hover) */
-div.stButton > button:hover {{
-    background: rgba(76, 175, 80, 0.9); /* Verde Metro/Destaque */
-    transform: translateY(-8px);
-    border: 1px solid #4CAF50;
-    box-shadow: 0 10px 20px rgba(76, 175, 80, 0.4);
-    color: white;
-}}
-
-/* Ajuste da fonte dentro do Card */
-div.stButton > button p {{
-    font-size: 22px !important;
-    font-weight: bold !important;
-    margin: 0;
-}}
-</style>
-""", unsafe_allow_html=True)
-
-# 4. Criando o Layout de Grid para os Cards
-st.markdown("<br>", unsafe_allow_html=True) # Espaçamento
-cols = st.columns(2) # Cria um grid com 2 colunas
-
-# Iterando sobre as páginas permitidas para criar os cards dinamicamente
-for index, page in enumerate(allowed_pages):
-    
-    # Pega o nome amigável com ícone do dicionário. Se não existir, formata o nome do próprio arquivo
+# Renderização da grade de botões (3 colunas)
+cols = st.columns(3) 
+for index, page in enumerate(sorted_pages):
     display_name = PAGE_DISPLAY_NAMES.get(page, page.replace('_', ' ').title())
         
-    # Distribui os cards pelas colunas
-    with cols[index % 2]:
-        # O botão age como o Card. Se clicado, navega para a página .py correspondente.
+    with cols[index % 3]:
         if st.button(display_name, key=f"card_{page}", use_container_width=True):
             try:
-                # O Streamlit vai procurar exatamente pelo nome listado em ALL_TABS (ex: pages/carga_csv.py)
                 st.switch_page(f"pages/{page}.py")
-            except Exception as e:
-                st.error(f"Página não encontrada: pages/{page}.py")
+            except Exception:
+                st.error(f"⚠️ Página não encontrada: pages/{page}.py")
