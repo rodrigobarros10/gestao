@@ -1,52 +1,27 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import calendar
 from datetime import datetime
 from functools import reduce
 
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
 from components.filters import get_date_filter_ui
-from components.ui_elements import render_download_btn
-from database.connection import run_query
+from components.page_styles import apply_operacao_css, apply_ultra_compact_css
+from components.ui_elements import apply_modern_layout, render_chart_footer, render_download_btn
 from config.constants import STATION_MAP
+from database.connection import run_query
+from utils.analytics import calc_delta, get_scalar
 from utils.helpers import map_stations
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
+from utils.page import require_access, setup_page
 
-st.set_page_config(layout="wide") 
+setup_page(layout="wide")
 
-# --- CSS ULTRA-COMPACTO E MODERNO ---
-st.markdown("""
-    <style>
-    .block-container { padding: 0.5rem 1rem !important; max-width: 100%; }
-    header { visibility: hidden; height: 0px; }
-    
-    /* Layout dos KPIs em Grade HTML */
-    .kpi-wrapper { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 12px; margin-top: 5px; }
-    .kpi-card { flex: 1; background: rgba(20, 20, 25, 0.6); border: 1px solid #333; border-radius: 8px; padding: 10px 5px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); transition: transform 0.2s; }
-    .kpi-card:hover { transform: translateY(-2px); border-color: #555; }
-    .kpi-title { font-family: 'Segoe UI', sans-serif; font-size: 11px; color: #aaa; font-weight: 600; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.5px; }
-    .kpi-val { font-family: 'Segoe UI', sans-serif; font-size: 20px; color: #fff; font-weight: 800; margin: 2px 0; }
-    .kpi-delta { font-size: 11px; font-weight: 700; }
-    .d-pos { color: #2ecc71; }
-    .d-neg { color: #e74c3c; }
-    .d-neu { color: #f1c40f; }
-    
-    .pbi-title { font-family: 'Segoe UI', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 0px; color: #FFFFFF !important; }
-    .stDataFrame { margin-top: 5px; }
-    
-    /* Ajuste fino dos botões de Download e Expansão para ficarem lado a lado */
-    .stButton > button, .stDownloadButton > button { padding: 2px 10px !important; font-size: 12px !important; border-radius: 4px; }
-    hr { margin: 8px 0px; opacity: 0.2; }
-    </style>
-""", unsafe_allow_html=True)
+apply_ultra_compact_css()
+apply_operacao_css()
 
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
-
-if not st.session_state.get('logged_in', False): st.switch_page("app.py")
-if "operacao" not in st.session_state['permissions'].get(st.session_state['current_role'], []): st.stop()
+require_access(page_keys=["operacao"])
 
 engine = st.session_state.get('db_loader').get_engine()
 
@@ -57,7 +32,10 @@ if st.session_state.get('show_expanded_chart'):
     with st.container(border=True):
         col_t, col_b = st.columns([8, 2])
         with col_t:
-            st.markdown(f"<h3 style='color:white; margin-top:5px;'>🔍 {st.session_state.get('expanded_title', 'Visão Ampliada')}</h3>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h3 style='color:white; margin-top:5px;'>🔍 {st.session_state.get('expanded_chart_title', 'Visão Ampliada')}</h3>",
+                unsafe_allow_html=True,
+            )
         with col_b:
             if st.button("❌ Fechar Ampliação", use_container_width=True, key="btn_fechar_exp"):
                 st.session_state['show_expanded_chart'] = False
@@ -68,16 +46,6 @@ if st.session_state.get('show_expanded_chart'):
         st.plotly_chart(fig_large, use_container_width=True)
     
     st.stop() 
-def render_chart_footer(df, file_name, fig, title, key):
-    c1, c2 = st.columns([8, 2])
-    with c1:
-        render_download_btn(df, file_name)
-    with c2:
-        if st.button("⛶", key=key, help="Ampliar Gráfico", use_container_width=True):
-            st.session_state['show_expanded_chart'] = True
-            st.session_state['expanded_chart'] = fig
-            st.session_state['expanded_title'] = title
-            st.rerun()
 
 # --- TOPO SUPER COMPACTO ---
 c_bt, c_tit, c_fil = st.columns([1, 7, 2])
@@ -94,51 +62,38 @@ dt_s_ant = f"{ano_ant}-{mes:02d}-01"
 dt_e_ant = f"{ano_ant}-{mes:02d}-{calendar.monthrange(ano_ant, mes)[1]}"
 
 # --- LÓGICA DE CÁLCULO PARA OS KPIs ---
-def get_val(q):
-    df = run_query(engine, q)
-    return float(df.iloc[0,0]) if not df.empty and pd.notnull(df.iloc[0,0]) else 0.0
+v_pax = get_scalar(engine, f"SELECT SUM(total_passageiros) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_pax_a = get_scalar(engine, f"SELECT SUM(total_passageiros) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dp_txt, dp_css = calc_delta(v_pax, v_pax_a)
 
-def calc_d(at, an, inv=False):
-    if an == 0 and at > 0: val = 100.0
-    elif an == 0 and at == 0: val = 0.0
-    else: val = ((at - an) / an) * 100
-    
-    if val > 0: return f"+{val:.1f}%", "d-neg" if inv else "d-pos"
-    elif val < 0: return f"{val:.1f}%", "d-pos" if inv else "d-neg"
-    return "0.0%", "d-neu"
+v_rev = get_scalar(engine, f"SELECT SUM(receita_total) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_rev_a = get_scalar(engine, f"SELECT SUM(receita_total) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dr_txt, dr_css = calc_delta(v_rev, v_rev_a)
 
-v_pax = get_val(f"SELECT SUM(total_passageiros) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
-v_pax_a = get_val(f"SELECT SUM(total_passageiros) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-dp_txt, dp_css = calc_d(v_pax, v_pax_a)
-
-v_rev = get_val(f"SELECT SUM(receita_total) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
-v_rev_a = get_val(f"SELECT SUM(receita_total) FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-dr_txt, dr_css = calc_d(v_rev, v_rev_a)
-
-v_via = get_val(f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
-v_via_a = get_val(f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-dv_txt, dv_css = calc_d(v_via, v_via_a)
+v_via = get_scalar(engine, f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_via_a = get_scalar(engine, f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dv_txt, dv_css = calc_delta(v_via, v_via_a)
 
 q_tmp = f"SELECT SUM(tempo_medio_minutos * total_viagens)/NULLIF(SUM(total_viagens),0) FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND tipo_real=6 AND ((hora>=6 AND hora<8) OR (hora>=17 AND hora<19))"
-v_tmp = get_val(q_tmp)
-v_tmp_a = get_val(q_tmp.replace(dt_s, dt_s_ant).replace(dt_e, dt_e_ant))
-dtm_txt, dtm_css = calc_d(v_tmp, v_tmp_a, inv=True)
+v_tmp = get_scalar(engine, q_tmp)
+v_tmp_a = get_scalar(engine, q_tmp.replace(dt_s, dt_s_ant).replace(dt_e, dt_e_ant))
+dtm_txt, dtm_css = calc_delta(v_tmp, v_tmp_a, inv=True)
 
-v_km = get_val(f"SELECT SUM(km_total) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}'")
-v_km_a = get_val(f"SELECT SUM(km_total) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-dk_txt, dk_css = calc_d(v_km, v_km_a)
+v_km = get_scalar(engine, f"SELECT SUM(km_total) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}'")
+v_km_a = get_scalar(engine, f"SELECT SUM(km_total) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dk_txt, dk_css = calc_delta(v_km, v_km_a)
 
-v_ind = get_val(f"SELECT SUM(horas_indisp) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}'")
-v_ind_a = get_val(f"SELECT SUM(horas_indisp) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-di_txt, di_css = calc_d(v_ind, v_ind_a, inv=True)
+v_ind = get_scalar(engine, f"SELECT SUM(horas_indisp) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s}' AND '{dt_e}'")
+v_ind_a = get_scalar(engine, f"SELECT SUM(horas_indisp) FROM public.vw_resumo_frota WHERE mes_ref BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+di_txt, di_css = calc_delta(v_ind, v_ind_a, inv=True)
 
-v_man = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
-v_man_a = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-dm_txt, dm_css = calc_d(v_man, v_man_a, inv=True)
+v_man = get_scalar(engine, f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_man_a = get_scalar(engine, f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+dm_txt, dm_css = calc_delta(v_man, v_man_a, inv=True)
 
-v_oco = get_val(f"SELECT SUM(total_ocorrencias) FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
-v_oco_a = get_val(f"SELECT SUM(total_ocorrencias) FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
-do_txt, do_css = calc_d(v_oco, v_oco_a, inv=True)
+v_oco = get_scalar(engine, f"SELECT SUM(total_ocorrencias) FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s}' AND '{dt_e}'")
+v_oco_a = get_scalar(engine, f"SELECT SUM(total_ocorrencias) FROM public.vw_resumo_ocorrencias WHERE data BETWEEN '{dt_s_ant}' AND '{dt_e_ant}'")
+do_txt, do_css = calc_delta(v_oco, v_oco_a, inv=True)
 
 # Renderiza os KPIs
 st.markdown(f"""
@@ -153,19 +108,6 @@ st.markdown(f"""
     <div class="kpi-card"><div class="kpi-title">⚠️ Ocorrências</div><div class="kpi-val">{v_oco:,.0f}</div><div class="kpi-delta {do_css}">{do_txt}</div></div>
 </div>
 """, unsafe_allow_html=True)
-
-# --- CONFIGURAÇÃO GLOBAL PLOTLY MODERNIZADA ---
-def apply_modern_layout(fig, h=180, show_x=False, show_legend=False):
-    fig.update_layout(
-        height=h, margin=dict(t=5, b=0, l=0, r=0),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, title="", visible=show_x),
-        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.1)", title="", zeroline=False),
-        showlegend=show_legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1) if show_legend else None,
-        font=dict(color="#FFF", family="Segoe UI")
-    )
-    return fig
 
 # ==========================================
 # FILEIRA 1: Evolução, Mapa e Raio-X

@@ -1,14 +1,9 @@
-# Arquivo: pages/07_📘_Documentacao.py
 import streamlit as st
 
-# --- 1. PROTEÇÃO DE ROTA E CONFIGURAÇÃO ---
-st.set_page_config(page_title="Documentação - Metrô BH", page_icon="📘", layout="wide")
+from utils.page import require_login, setup_page
 
-# Garante que o usuário não acesse sem estar logado
-if not st.session_state.get('logged_in', False):
-    # Se não estiver logado, redireciona para a tela principal de login
-    # ATENÇÃO: Substitua "app.py" pelo nome exato do seu arquivo principal se for diferente.
-    st.switch_page("app.py") 
+setup_page(layout="wide", page_title="Documentação - Metrô BH", page_icon="📘")
+require_login()
 
 # --- 2. BOTÃO DE VOLTAR (Na página principal) ---
 # Usamos colunas para o botão ficar discreto no canto esquerdo

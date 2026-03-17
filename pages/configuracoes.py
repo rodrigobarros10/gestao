@@ -1,15 +1,12 @@
 import streamlit as st
 import pandas as pd
+
 from config.constants import ALL_TABS
 from services.auth_service import AuthService
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
+from utils.page import require_admin, setup_page
 
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
-
-if not st.session_state.get('logged_in', False):
-    st.switch_page("app.py") # ⚠️ Substitua "app.py" pelo nome exato do seu arquivo inicial
+setup_page(layout="wide", page_title="Configurações", page_icon="⚙️")
+require_admin()
 
 # 2. BOTÃO DE VOLTAR NA PÁGINA PRINCIPAL
 # Usamos colunas para que o botão não ocupe a largura inteira da tela
@@ -17,10 +14,6 @@ col_btn, col_vazia = st.columns([1.5, 8.5])
 with col_btn:
     if st.button("⬅️ Voltar ao Início", use_container_width=True):
         st.switch_page("app.py")
-
-if not st.session_state.get('logged_in') or st.session_state.get('current_role') != 'admin':
-    st.error("Acesso restrito a Administradores.")
-    st.stop()
 
 st.title("⚙️ Configurações de Sistema")
 

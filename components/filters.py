@@ -1,5 +1,7 @@
-import streamlit as st
 import calendar
+from datetime import datetime
+
+import streamlit as st
 
 def get_date_filter_ui(key_prefix, show_labels=True):
     c1, c2 = st.columns(2)
@@ -8,11 +10,13 @@ def get_date_filter_ui(key_prefix, show_labels=True):
     visibilidade = "visible" if show_labels else "collapsed"
     
     with c1:
+        current_year = datetime.now().year
+        years = [current_year - i for i in range(0, 4)]
         ano_sel = st.selectbox(
-            "Ano", 
-            [2026, 2025, 2024, 2023], 
-            key=f'ano_{key_prefix}', 
-            label_visibility=visibilidade
+            "Ano",
+            years,
+            key=f"ano_{key_prefix}",
+            label_visibility=visibilidade,
         )
     with c2:
         meses_map = {1:'1', 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'11', 12:'12'}

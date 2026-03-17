@@ -1,15 +1,11 @@
 import streamlit as st
+
 from config.constants import TABLES_CONFIG
 from services.etl_service import ETLService
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
-import streamlit as st
+from utils.page import require_access, setup_page
 
-
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
-if not st.session_state.get('logged_in', False):
-    st.switch_page("app.py") # ⚠️ Substitua "app.py" pelo nome exato do seu arquivo inicial
+setup_page(layout="wide", page_title="Carga CSV", page_icon="📂")
+require_access(page_keys=["carga_csv"], show_error=True)
 
 # 2. BOTÃO DE VOLTAR NA PÁGINA PRINCIPAL
 # Usamos colunas para que o botão não ocupe a largura inteira da tela

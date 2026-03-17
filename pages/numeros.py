@@ -2,43 +2,21 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+
 from components.filters import get_date_filter_ui
-from components.ui_elements import render_download_btn
-from database.connection import run_query
+from components.page_styles import apply_ultra_compact_css
+from components.ui_elements import apply_modern_layout, render_chart_footer
 from config.constants import STATION_MAP
+from database.connection import run_query
+from utils.analytics import calc_delta, get_scalar
 from utils.helpers import map_stations
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
+from utils.page import require_access, setup_page
 
-st.set_page_config(layout="wide")
+setup_page(layout="wide")
 
-# --- CSS ULTRA-COMPACTO E MODERNO ---
-st.markdown("""
-    <style>
-    .block-container { padding: 0.5rem 1rem !important; max-width: 100%; }
-    header { visibility: hidden; height: 0px; }
-    
-    .kpi-wrapper { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 12px; margin-top: 5px; }
-    .kpi-card { flex: 1; background: rgba(20, 20, 25, 0.6); border: 1px solid #333; border-radius: 8px; padding: 10px 5px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); transition: transform 0.2s; }
-    .kpi-card:hover { transform: translateY(-2px); border-color: #555; }
-    .kpi-title { font-family: 'Segoe UI', sans-serif; font-size: 11px; color: #aaa; font-weight: 600; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.5px; }
-    .kpi-val { font-family: 'Segoe UI', sans-serif; font-size: 20px; color: #fff; font-weight: 800; margin: 2px 0; }
-    .kpi-delta { font-size: 11px; font-weight: 700; }
-    .d-pos { color: #2ecc71; }
-    .d-neg { color: #e74c3c; }
-    .d-neu { color: #f1c40f; }
-    
-    .pbi-title { font-family: 'Segoe UI', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 0px; color: #FFFFFF !important; }
-    .stButton > button, .stDownloadButton > button { padding: 2px 10px !important; font-size: 12px !important; border-radius: 4px; }
-    hr { margin: 8px 0px; opacity: 0.2; }
-    </style>
-""", unsafe_allow_html=True)
+apply_ultra_compact_css()
 
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
-
-if not st.session_state.get('logged_in', False): st.switch_page("app.py")
-if "numeros" not in st.session_state['permissions'].get(st.session_state['current_role'], []): st.stop()
+require_access(page_keys=["numeros"])
 
 engine = st.session_state.get('db_loader').get_engine()
 
@@ -49,27 +27,19 @@ if st.session_state.get('show_expanded_num'):
     with st.container(border=True):
         col_t, col_b = st.columns([8, 2])
         with col_t:
-            st.markdown(f"<h3 style='color:white; margin-top:5px;'>🔍 {st.session_state.get('expanded_title_num', 'Visão Ampliada')}</h3>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h3 style='color:white; margin-top:5px;'>🔍 {st.session_state.get('expanded_num_title', 'Visão Ampliada')}</h3>",
+                unsafe_allow_html=True,
+            )
         with col_b:
             if st.button("❌ Fechar Ampliação", use_container_width=True, key="btn_fechar_exp_num"):
                 st.session_state['show_expanded_num'] = False
                 st.rerun()
         
-        fig_large = go.Figure(st.session_state['expanded_chart_num'])
+        fig_large = go.Figure(st.session_state['expanded_num'])
         fig_large.update_layout(height=600)
         st.plotly_chart(fig_large, use_container_width=True)
     st.stop()
-
-def render_chart_footer(df, file_name, fig, title, key):
-    c1, c2 = st.columns([8, 2])
-    with c1:
-        render_download_btn(df, file_name)
-    with c2:
-        if st.button("⛶", key=key, help="Ampliar Gráfico", use_container_width=True):
-            st.session_state['show_expanded_num'] = True
-            st.session_state['expanded_chart_num'] = fig
-            st.session_state['expanded_title_num'] = title
-            st.rerun()
 
 # --- TOPO SUPER COMPACTO ---
 c_bt, c_tit, c_fil = st.columns([1, 7, 2])
@@ -85,34 +55,22 @@ ano_start, ano_end = f"{ano_atual}-01-01", f"{ano_atual}-12-31"
 ano_ant = ano_atual - 1
 ano_ant_start, ano_ant_end = f"{ano_ant}-01-01", f"{ano_ant}-12-31"
 
-def get_val(q):
-    df = run_query(engine, q)
-    return float(df.iloc[0,0]) if not df.empty and pd.notnull(df.iloc[0,0]) else 0.0
-
-def calc_d(at, an, inv=False):
-    if an == 0 and at > 0: val = 100.0
-    elif an == 0 and at == 0: val = 0.0
-    else: val = ((at - an) / an) * 100
-    if val > 0: return f"+{val:.1f}%", "d-neg" if inv else "d-pos"
-    elif val < 0: return f"{val:.1f}%", "d-pos" if inv else "d-neg"
-    return "0.0%", "d-neu"
-
 # --- CÁLCULO DOS KPIs ---
-v_med_mes = get_val(f"WITH mensal AS (SELECT TO_CHAR(data, 'YYYY-MM') as mes, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{ano_start}' AND '{ano_end}' GROUP BY 1) SELECT AVG(qtd) FROM mensal")
-v_med_mes_a = get_val(f"WITH mensal AS (SELECT TO_CHAR(data, 'YYYY-MM') as mes, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' GROUP BY 1) SELECT AVG(qtd) FROM mensal")
-dt1_txt, dt1_css = calc_d(v_med_mes, v_med_mes_a)
+v_med_mes = get_scalar(engine, f"WITH mensal AS (SELECT TO_CHAR(data, 'YYYY-MM') as mes, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{ano_start}' AND '{ano_end}' GROUP BY 1) SELECT AVG(qtd) FROM mensal")
+v_med_mes_a = get_scalar(engine, f"WITH mensal AS (SELECT TO_CHAR(data, 'YYYY-MM') as mes, SUM(total_passageiros) as qtd FROM public.vw_resumo_bilhetagem WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' GROUP BY 1) SELECT AVG(qtd) FROM mensal")
+dt1_txt, dt1_css = calc_delta(v_med_mes, v_med_mes_a)
 
-v_corr = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_start}' AND '{ano_end}' AND tipo_manutencao = 'CORRETIVA'")
-v_corr_a = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' AND tipo_manutencao = 'CORRETIVA'")
-dt2_txt, dt2_css = calc_d(v_corr, v_corr_a, inv=True)
+v_corr = get_scalar(engine, f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_start}' AND '{ano_end}' AND tipo_manutencao = 'CORRETIVA'")
+v_corr_a = get_scalar(engine, f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' AND tipo_manutencao = 'CORRETIVA'")
+dt2_txt, dt2_css = calc_delta(v_corr, v_corr_a, inv=True)
 
-v_prev = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_start}' AND '{ano_end}' AND tipo_manutencao = 'PREVENTIVA'")
-v_prev_a = get_val(f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' AND tipo_manutencao = 'PREVENTIVA'")
-dt3_txt, dt3_css = calc_d(v_prev, v_prev_a)
+v_prev = get_scalar(engine, f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_start}' AND '{ano_end}' AND tipo_manutencao = 'PREVENTIVA'")
+v_prev_a = get_scalar(engine, f"SELECT SUM(total_manutencoes) FROM public.vw_resumo_manutencao WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' AND tipo_manutencao = 'PREVENTIVA'")
+dt3_txt, dt3_css = calc_delta(v_prev, v_prev_a)
 
-v_canc = get_val(f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{ano_start}' AND '{ano_end}' AND tipo_real in (9,10)")
-v_canc_a = get_val(f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' AND tipo_real in (9,10)")
-dt4_txt, dt4_css = calc_d(v_canc, v_canc_a, inv=True)
+v_canc = get_scalar(engine, f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{ano_start}' AND '{ano_end}' AND tipo_real in (9,10)")
+v_canc_a = get_scalar(engine, f"SELECT SUM(total_viagens) FROM public.vw_resumo_viagens WHERE data BETWEEN '{ano_ant_start}' AND '{ano_ant_end}' AND tipo_real in (9,10)")
+dt4_txt, dt4_css = calc_delta(v_canc, v_canc_a, inv=True)
 
 # Renderiza KPIs
 st.markdown(f"""
@@ -123,19 +81,6 @@ st.markdown(f"""
     <div class="kpi-card"><div class="kpi-title">Viagens Canceladas</div><div class="kpi-val">{v_canc:,.0f}</div><div class="kpi-delta {dt4_css}">{dt4_txt}</div></div>
 </div>
 """, unsafe_allow_html=True)
-
-# --- CONFIGURAÇÃO GLOBAL PLOTLY MODERNIZADA ---
-def apply_modern_layout(fig, h=220, show_x=False, show_legend=False):
-    fig.update_layout(
-        height=h, margin=dict(t=10, b=0, l=0, r=0),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, title="", visible=show_x),
-        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.1)", title="", zeroline=False),
-        showlegend=show_legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="center", x=0.5) if show_legend else None,
-        font=dict(color="#FFF", family="Segoe UI")
-    )
-    return fig
 
 # ==========================================
 # FILEIRA 1: PERFIL E ESTAÇÕES
@@ -150,7 +95,7 @@ with c_mn1:
             fig_perf = px.pie(df_perfil, values='qtd', names='tipo_bilhetagem', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
             fig_perf.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(apply_modern_layout(fig_perf, h=250), use_container_width=True)
-            render_chart_footer(df_perfil, "perfil_bilhetagem", fig_perf, "Perfil de Bilhetagem (Participação)", "exp_n_perf")
+            render_chart_footer(df_perfil, "perfil_bilhetagem", fig_perf, "Perfil de Bilhetagem (Participação)", "exp_n_perf", state_prefix="expanded_num")
 
 with c_mn2:
     with st.container(border=True):
@@ -161,7 +106,7 @@ with c_mn2:
             df_est_med_comp = map_stations(df_est_med_comp, 'id_estacao', STATION_MAP)
             fig_comp = px.bar(df_est_med_comp, x='id_estacao', y='media_mensal', color='ano_ref', barmode='group', color_discrete_sequence=['#FA709A', '#00F2FE'])
             st.plotly_chart(apply_modern_layout(fig_comp, h=250, show_legend=True, show_x=True), use_container_width=True)
-            render_chart_footer(df_est_med_comp, "comp_estacao", fig_comp, "Média Mensal de Passageiros por Estação", "exp_n_comp")
+            render_chart_footer(df_est_med_comp, "comp_estacao", fig_comp, "Média Mensal de Passageiros por Estação", "exp_n_comp", state_prefix="expanded_num")
 
 # ==========================================
 # FILEIRA 2: VOLUME POR TIPO E GRUPO
@@ -176,7 +121,7 @@ with c_cons1:
         if not df_tipo_est.empty:
             fig_tipo_est = px.bar(df_tipo_est, x='nome', y='qtd', color='tipo_bilhetagem', color_discrete_sequence=px.colors.qualitative.Set2)
             st.plotly_chart(apply_modern_layout(fig_tipo_est, h=250, show_legend=True, show_x=True), use_container_width=True)
-            render_chart_footer(df_tipo_est, "tipo_bilhete_estacao", fig_tipo_est, "Volume de Validações por Tipo de Bilhete", "exp_n_tipo_est")
+            render_chart_footer(df_tipo_est, "tipo_bilhete_estacao", fig_tipo_est, "Volume de Validações por Tipo de Bilhete", "exp_n_tipo_est", state_prefix="expanded_num")
 
 with c_cons2:
     with st.container(border=True):
@@ -186,7 +131,7 @@ with c_cons2:
         if not df_grupo_est.empty:
             fig_grupo_est = px.bar(df_grupo_est, x='nome', y='qtd', color='grupo_bilhetagem', color_discrete_sequence=px.colors.qualitative.Set3)
             st.plotly_chart(apply_modern_layout(fig_grupo_est, h=250, show_legend=True, show_x=True), use_container_width=True)
-            render_chart_footer(df_grupo_est, "grupo_bilhete_estacao", fig_grupo_est, "Volume de Validações por Grupo de Bilhete", "exp_n_grp_est")
+            render_chart_footer(df_grupo_est, "grupo_bilhete_estacao", fig_grupo_est, "Volume de Validações por Grupo de Bilhete", "exp_n_grp_est", state_prefix="expanded_num")
 
 st.markdown("<h4 style='color: #FFFFFF; margin-top:15px;'>📈 Evolução Histórica (Série Temporal)</h4>", unsafe_allow_html=True)
 
@@ -203,7 +148,7 @@ with ch1:
             fig_pass_mes = px.line(df_pass_mes, x='mes', y='total')
             fig_pass_mes.update_traces(line_shape='spline', line=dict(color='#00F2FE', width=3), fill='tozeroy', fillcolor='rgba(0, 242, 254, 0.2)')
             st.plotly_chart(apply_modern_layout(fig_pass_mes, h=180, show_x=True), use_container_width=True)
-            render_chart_footer(df_pass_mes, "hist_passageiros", fig_pass_mes, "Evolução Histórica de Passageiros", "exp_n_pax")
+            render_chart_footer(df_pass_mes, "hist_passageiros", fig_pass_mes, "Evolução Histórica de Passageiros", "exp_n_pax", state_prefix="expanded_num")
 
 with ch2:
     with st.container(border=True):
@@ -213,7 +158,7 @@ with ch2:
             fig_tipo_mes = px.line(df_tipo_mes, x='mes', y='total', color='tipo_bilhetagem')
             fig_tipo_mes.update_traces(line_shape='spline', line_width=2)
             st.plotly_chart(apply_modern_layout(fig_tipo_mes, h=180, show_legend=True, show_x=True), use_container_width=True)
-            render_chart_footer(df_tipo_mes, "hist_tipo_bilhete", fig_tipo_mes, "Evolução Temporal: Tipo de Bilhete", "exp_n_tpm")
+            render_chart_footer(df_tipo_mes, "hist_tipo_bilhete", fig_tipo_mes, "Evolução Temporal: Tipo de Bilhete", "exp_n_tpm", state_prefix="expanded_num")
 
 with ch3:
     with st.container(border=True):
@@ -223,7 +168,7 @@ with ch3:
             fig_viagens_mes = px.line(df_viagens_mes, x='mes', y='total')
             fig_viagens_mes.update_traces(line_shape='spline', line=dict(color='#43E97B', width=3), fill='tozeroy', fillcolor='rgba(67, 233, 123, 0.2)')
             st.plotly_chart(apply_modern_layout(fig_viagens_mes, h=180, show_x=True), use_container_width=True)
-            render_chart_footer(df_viagens_mes, "hist_viagens", fig_viagens_mes, "Evolução Histórica de Viagens", "exp_n_vreal")
+            render_chart_footer(df_viagens_mes, "hist_viagens", fig_viagens_mes, "Evolução Histórica de Viagens", "exp_n_vreal", state_prefix="expanded_num")
 
 # ==========================================
 # FILEIRA 4: SÉRIES HISTÓRICAS (2/2)
@@ -238,7 +183,7 @@ with ch4:
             fig_falhas_mes = px.line(df_falhas_mes, x='mes', y='total')
             fig_falhas_mes.update_traces(line_shape='spline', line=dict(color='#FA709A', width=3), fill='tozeroy', fillcolor='rgba(250, 112, 154, 0.2)')
             st.plotly_chart(apply_modern_layout(fig_falhas_mes, h=180, show_x=True), use_container_width=True)
-            render_chart_footer(df_falhas_mes, "hist_canceladas", fig_falhas_mes, "Evolução Histórica de Cancelamentos", "exp_n_vcanc")
+            render_chart_footer(df_falhas_mes, "hist_canceladas", fig_falhas_mes, "Evolução Histórica de Cancelamentos", "exp_n_vcanc", state_prefix="expanded_num")
 
 with ch5:
     with st.container(border=True):
@@ -249,7 +194,7 @@ with ch5:
                 fig_km_mes = px.line(df_km_mes, x='mes', y='total_km')
                 fig_km_mes.update_traces(line_shape='spline', line=dict(color='#FEE140', width=3), fill='tozeroy', fillcolor='rgba(254, 225, 64, 0.2)')
                 st.plotly_chart(apply_modern_layout(fig_km_mes, h=180, show_x=True), use_container_width=True)
-                render_chart_footer(df_km_mes, "hist_km", fig_km_mes, "Evolução Histórica de Quilometragem", "exp_n_km")
+                render_chart_footer(df_km_mes, "hist_km", fig_km_mes, "Evolução Histórica de Quilometragem", "exp_n_km", state_prefix="expanded_num")
         except Exception:
             st.info("⚠️ View não encontrada.")
 
@@ -261,7 +206,7 @@ with ch6:
             if not df_acid_mes.empty:
                 fig_acid_mes = px.bar(df_acid_mes, x='mes', y='total', color_discrete_sequence=['#e74c3c'])
                 st.plotly_chart(apply_modern_layout(fig_acid_mes, h=180, show_x=True), use_container_width=True)
-                render_chart_footer(df_acid_mes, "hist_acidentes", fig_acid_mes, "Evolução Histórica de Acidentes", "exp_n_aci")
+                render_chart_footer(df_acid_mes, "hist_acidentes", fig_acid_mes, "Evolução Histórica de Acidentes", "exp_n_aci", state_prefix="expanded_num")
         except Exception:
             st.info("⚠️ View não encontrada.")
 
@@ -276,6 +221,6 @@ with st.container(border=True):
             fig_headway_mes = px.line(df_headway_mes, x='mes', y='media_headway')
             fig_headway_mes.update_traces(line_shape='spline', line=dict(color='#9b59b6', width=3), marker=dict(size=8, color='#FFF'))
             st.plotly_chart(apply_modern_layout(fig_headway_mes, h=200, show_x=True), use_container_width=True)
-            render_chart_footer(df_headway_mes, "hist_headway", fig_headway_mes, "Headway Médio Consolidado", "exp_n_hwm")
+            render_chart_footer(df_headway_mes, "hist_headway", fig_headway_mes, "Headway Médio Consolidado", "exp_n_hwm", state_prefix="expanded_num")
     except Exception:
         st.info("⚠️ View de Headway não encontrada.")

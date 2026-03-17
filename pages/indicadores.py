@@ -1,33 +1,20 @@
+import random
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import random
+
 from components.filters import get_date_filter_ui
+from components.page_styles import apply_indicadores_css
 from components.ui_elements import render_kpi_card_modern, render_download_btn
 from database.connection import run_query
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
+from utils.page import require_access, setup_page
 
-st.set_page_config(layout="wide")
+setup_page(layout="wide")
 
-st.markdown("""
-    <style>
-    .block-container { padding-top: 1rem; padding-bottom: 0rem; max-width: 98%; }
-    header { visibility: hidden; height: 0px; } /* Esconde o topo do Streamlit para ganhar espaço */
-    .stMetric { margin-bottom: -15px; }
-    h3 { font-size: 18px !important; margin-bottom: 0px !important; padding-bottom: 5px !important; }
-    hr { margin-top: 10px; margin-bottom: 10px; }
-    </style>
-""", unsafe_allow_html=True)
+apply_indicadores_css()
 
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
-
-if not st.session_state.get('logged_in', False): st.switch_page("app.py")
-
-if not st.session_state.get('logged_in') or "indicadores" not in st.session_state['permissions'].get(st.session_state['current_role'], []):
-    st.error("Acesso Negado.")
-    st.stop()
+require_access(page_keys=["indicadores"], show_error=True)
 
 db_loader = st.session_state.get('db_loader')
 if not db_loader: st.stop()

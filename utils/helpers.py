@@ -1,5 +1,7 @@
-import pandas as pd
 import base64
+from functools import lru_cache
+
+import pandas as pd
 
 def convert_df_to_csv(df):
     return df.to_csv(index=False, sep=';', decimal=',').encode('utf-8')
@@ -26,6 +28,7 @@ def map_stations(df, col_name, station_map):
         df[col_name] = df[col_name].map(station_map).fillna(df[col_name])
     return df
 
+@lru_cache(maxsize=8)
 def get_base64_of_bin_file(bin_file):
     try:
         with open(bin_file, 'rb') as f:

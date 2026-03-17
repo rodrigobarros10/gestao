@@ -1,17 +1,15 @@
-import streamlit as st
 import plotly.io as pio
+import streamlit as st
+
 from config.settings import DEFAULT_DB_CONFIG
 from config.constants import ALL_TABS
 from database.connection import PostgreSQLDataLoader
 from services.auth_service import AuthService
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
+from utils.page import setup_page
 
 # --- INITIAL SETUP ---
-st.set_page_config(page_title="DATA TREM | Metro BH", layout="wide", page_icon="🚇")
+img_base64 = setup_page(page_title="DATA TREM | Metro BH", layout="wide", page_icon="🚇")
 pio.templates.default = "plotly_dark" # Padrão escuro das outras páginas
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
 
 # --- INJEÇÃO DE CSS GLOBAL & DARK GLASSMORPHISM ---
 st.markdown(f"""

@@ -1,13 +1,10 @@
 import streamlit as st
+
 from config.constants import INSERTS_PREDEFINIDOS
-from utils.helpers import get_base64_of_bin_file
-from components.ui_elements import load_custom_css
+from utils.page import require_access, setup_page
 
-img_base64 = get_base64_of_bin_file('fundo_metro.jpeg') 
-load_custom_css(img_base64)
-
-if not st.session_state.get('logged_in', False):
-    st.switch_page("app.py") # ⚠️ Substitua "app.py" pelo nome exato do seu arquivo inicial
+setup_page(layout="wide", page_title="Scripts SQL", page_icon="💾")
+require_access(page_keys=["sql_scripts"], show_error=True)
 
 # 2. BOTÃO DE VOLTAR NA PÁGINA PRINCIPAL
 # Usamos colunas para que o botão não ocupe a largura inteira da tela
@@ -15,10 +12,6 @@ col_btn, col_vazia = st.columns([1.5, 8.5])
 with col_btn:
     if st.button("⬅️ Voltar ao Início", use_container_width=True):
         st.switch_page("app.py")
-
-if not st.session_state.get('logged_in') or "sql_scripts" not in st.session_state['permissions'].get(st.session_state['current_role'], []):
-    st.error("Acesso Negado.")
-    st.stop()
 
 st.title("💾 Execução de Scripts")
 db_loader = st.session_state['db_loader']
