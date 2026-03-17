@@ -13,6 +13,7 @@ def load_custom_css(img_base64=""):
             --border-1: rgba(255, 255, 255, 0.14);
             --text-0: #F5F7FA;
             --text-1: #C9D1D9;
+            --title-0: #1A1A1D;
             --accent-0: #00F2FE;
             --accent-1: #FA709A;
             --shadow-0: 0 10px 30px rgba(0,0,0,0.35);
@@ -30,7 +31,7 @@ def load_custom_css(img_base64=""):
             font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
             color: var(--text-0);
         }}
-        h1, h2, h3, h4, h5, h6 {{ color: var(--text-0); letter-spacing: 0.2px; }}
+        h1, h2, h3, h4, h5, h6 {{ color: var(--title-0); letter-spacing: 0.2px; }}
         p, span, label {{ color: var(--text-1); }}
 
         /* Panels and containers */

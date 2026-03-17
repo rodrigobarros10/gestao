@@ -31,7 +31,7 @@ header {{ visibility: hidden; height: 0px; }}
 .block-container {{ padding-top: 3rem !important; max-width: 98%; }}
 
 /* Estilização Geral de Textos */
-h1, h2, h3, h4, p {{ font-family: 'Segoe UI', sans-serif; color: #FFFFFF; }}
+h1, h2, h3, h4, p {{ font-family: 'Segoe UI', sans-serif; color: #1A1A1D; }}
 
 /* --- ESTILIZAÇÃO DO LOGIN --- */
 /* Formulário de Login flutuante (Dark Glassmorphism) */
@@ -136,7 +136,7 @@ if not st.session_state['logged_in']:
             st.error("🔴 Serviço de banco de dados indisponível. Contate a engenharia.")
         else:
             with st.form("login_form"):
-                st.markdown("<p style='color: #FFFFFF; font-weight: 600; margin-bottom: 5px;'>Acesso Restrito</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #1A1A1D; font-weight: 600; margin-bottom: 5px;'>Acesso Restrito</p>", unsafe_allow_html=True)
                 username = st.text_input("Usuário", placeholder="Insira sua credencial")
                 password = st.text_input("Senha", type="password", placeholder="••••••••")
                 st.markdown("<br>", unsafe_allow_html=True)

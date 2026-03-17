@@ -54,7 +54,7 @@ with c_bt:
 with c_fil:
     filters = get_date_filter_ui("operacao_main", show_labels=False)
 with c_tit:
-    st.markdown(f"<h4 style='color: #FFFFFF; margin-top:0px;'>Painel de Operação - {filters['mes_nome']}/{filters['ano']}</h4>", unsafe_allow_html=True)
+    st.markdown(f"<h4 style='color: #1A1A1D; margin-top:0px;'>Painel de Operação - {filters['mes_nome']}/{filters['ano']}</h4>", unsafe_allow_html=True)
 
 dt_s, dt_e = filters['dt_start'], filters['dt_end']
 ano_ant, mes = filters['ano'] - 1, filters['mes']

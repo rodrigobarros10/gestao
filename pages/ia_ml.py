@@ -53,7 +53,7 @@ c_bt, c_tit = st.columns([1, 9])
 with c_bt:
     if st.button("⬅️ Início", use_container_width=True): st.switch_page("app.py")
 with c_tit:
-    st.markdown("<h4 style='color: #FFFFFF; margin-top:0px;'>🤖 Central Unificada de Inteligência Artificial e Modelos Preditivos</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #1A1A1D; margin-top:0px;'>🤖 Central Unificada de Inteligência Artificial e Modelos Preditivos</h4>", unsafe_allow_html=True)
 
 # Buscar meses disponíveis para o filtro
 try:

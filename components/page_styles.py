@@ -18,7 +18,7 @@ def apply_ultra_compact_css():
         .d-neg { color: #e74c3c; }
         .d-neu { color: #f1c40f; }
 
-        .pbi-title { font-family: 'Segoe UI', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 0px; color: #FFFFFF !important; }
+        .pbi-title { font-family: 'Segoe UI', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 0px; color: #1A1A1D !important; }
         .stButton > button, .stDownloadButton > button { padding: 2px 10px !important; font-size: 12px !important; border-radius: 4px; }
         hr { margin: 8px 0px; opacity: 0.2; }
         </style>

@@ -48,7 +48,7 @@ with c_bt:
 with c_fil:
     filters = get_date_filter_ui("numeros", show_labels=False)
 with c_tit:
-    st.markdown("<h4 style='color: #FFFFFF; margin-top:0px;'>🏛️ Metrô RMBH em Números (Ano Consolidado)</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #1A1A1D; margin-top:0px;'>🏛️ Metrô RMBH em Números (Ano Consolidado)</h4>", unsafe_allow_html=True)
 
 ano_atual = filters['ano']
 ano_start, ano_end = f"{ano_atual}-01-01", f"{ano_atual}-12-31"
@@ -133,7 +133,7 @@ with c_cons2:
             st.plotly_chart(apply_modern_layout(fig_grupo_est, h=250, show_legend=True, show_x=True), use_container_width=True)
             render_chart_footer(df_grupo_est, "grupo_bilhete_estacao", fig_grupo_est, "Volume de Validações por Grupo de Bilhete", "exp_n_grp_est", state_prefix="expanded_num")
 
-st.markdown("<h4 style='color: #FFFFFF; margin-top:15px;'>📈 Evolução Histórica (Série Temporal)</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='color: #1A1A1D; margin-top:15px;'>📈 Evolução Histórica (Série Temporal)</h4>", unsafe_allow_html=True)
 
 # ==========================================
 # FILEIRA 3: SÉRIES HISTÓRICAS (1/2)
