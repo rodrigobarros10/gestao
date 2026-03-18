@@ -203,7 +203,7 @@ else: df_dem_agg = pd.DataFrame(columns=['hora', 'pax_ida', 'pax_volta'])
 with c_odi:
     with st.container(border=True):
         st.markdown("<div class='pbi-title'>➡️ Oferta x Demanda (Ida)</div>", unsafe_allow_html=True)
-        df_ida = run_query(engine, f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND origem IN ('Eldorado','ELD') AND destino IN ('VRO','ELD') AND tipo_real=6 GROUP BY 1")
+        df_ida = run_query(engine, f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND destino in ('ELD', 'NEL') AND   tipo_real=6 GROUP BY 1")
         if not df_ida.empty and not df_dem_agg.empty:
             df_c_ida = pd.merge(df_ida, df_dem_agg, on='hora', how='outer').fillna(0).sort_values('hora')
             fig_i = go.Figure()
@@ -215,7 +215,7 @@ with c_odi:
 with c_odv:
     with st.container(border=True):
         st.markdown("<div class='pbi-title'>⬅️ Oferta x Demanda (Volta)</div>", unsafe_allow_html=True)
-        df_vol = run_query(engine, f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND origem IN ('Vilarinho','VRO') AND destino IN ('VRO','ELD') AND tipo_real=6 GROUP BY 1")
+        df_vol = run_query(engine, f"SELECT hora, SUM(total_viagens) as viagens FROM public.vw_resumo_viagens WHERE data BETWEEN '{dt_s}' AND '{dt_e}' AND destino in ('VRO') AND  tipo_real=6 GROUP BY 1")
         if not df_vol.empty and not df_dem_agg.empty:
             df_c_vol = pd.merge(df_vol, df_dem_agg, on='hora', how='outer').fillna(0).sort_values('hora')
             fig_v = go.Figure()

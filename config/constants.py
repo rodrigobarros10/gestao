@@ -75,6 +75,7 @@ INSERTS_PREDEFINIDOS = [
             update migracao.tab09 set tue = t.id from public.frota t where tue = t.cod_trem ;
             update migracao.tab09 set tue = t.id from public.frota t where tue = t.cod_trem ;
             update migracao.tab14 a set composicao = t.id from public.frota t where a.composicao = t.cod_trem;   
+            update migracao.tab02 set cod_estacao = 0 where cod_estacao ='NEL';
             update migracao.tab02 set cod_estacao = 1 where cod_estacao ='ELD';
             update migracao.tab02 set cod_estacao = 2 where cod_estacao = 'CID'; 
             update migracao.tab02 set cod_estacao = 3 where cod_estacao = 'VOS';
@@ -95,6 +96,7 @@ INSERTS_PREDEFINIDOS = [
             update migracao.tab02 set cod_estacao = 18 where cod_estacao = 'FLO';
             update migracao.tab02 set cod_estacao = 19 where cod_estacao = 'VRO';
             update migracao.tab02 set valor  = '5.50'  where valor = '5,5';
+            update migracao.tab02 set valor  = '5.80'  where valor = '5,8';
             update migracao.tab02_marco set cod_estacao = 1 where cod_estacao ='ELD';
             update migracao.tab02_marco set cod_estacao = 2 where cod_estacao = 'CID';  
             update migracao.tab02_marco set cod_estacao = 3 where cod_estacao = 'VOS';
@@ -115,6 +117,8 @@ INSERTS_PREDEFINIDOS = [
             update migracao.tab02_marco set cod_estacao = 18 where cod_estacao = 'FLO';
             update migracao.tab02_marco set cod_estacao = 19 where cod_estacao = 'VRO';
             update migracao.tab02_marco set valor  = '5.50'  where valor = '5,5';
+            update migracao.tab02_marco set valor  = '5.8'  where valor = '5,8';
+            update migracao.tab07  set cod_estacao = 0 where cod_estacao ='NEL';
             update migracao.tab07  set cod_estacao = 1 where cod_estacao ='ELD';
             update migracao.tab07 set cod_estacao = 2 where cod_estacao = 'CID';    
             update migracao.tab07 set cod_estacao = 3 where cod_estacao = 'VOS';
@@ -213,12 +217,12 @@ INSERTS_PREDEFINIDOS = [
             insert into public.arq2_bilhetagem (DATA_HORA,ID_ESTACAO,ID_BLOQUEIO,GRUPO_BILHETAGEM,FORMA_PGTO,TIPO_BILHETAGEM,id_validador,VALOR,USUARIO)
             select CONCAT(ab.data_completa, ' ', ab.hora_completa)::timestamp, ab.cod_estacao ::INT,ab.bloqueio_id::INT,ab.grupo_bilhete ,ab.forma_pagamento ,ab.tipo_bilhete,null,ab.valor ::numeric(3,2),ab.user_id 
             from migracao.tab02 ab 
-            ON CONFLICT (DATA_HORA,ID_ESTACAO,ID_BLOQUEIO,GRUPO_BILHETAGEM,FORMA_PGTO,TIPO_BILHETAGEM) DO NOTHING;
+            ON CONFLICT (DATA_HORA,ID_ESTACAO,ID_BLOQUEIO,GRUPO_BILHETAGEM,FORMA_PGTO,TIPO_BILHETAGEM,ID_VALIDADOR) DO NOTHING;
             
             insert into public.arq2_bilhetagem (DATA_HORA,ID_ESTACAO,ID_BLOQUEIO,GRUPO_BILHETAGEM,FORMA_PGTO,TIPO_BILHETAGEM,id_validador,VALOR,USUARIO)
             select CONCAT(ab.data_completa, ' ', ab.hora_completa)::timestamp,ab.cod_estacao ::INT,ab.bloqueio_id::INT,ab.grupo_bilhete ,ab.forma_pagamento ,ab.tipo_bilhete,null,ab.valor ::numeric(3,2),ab.user_id 
             from migracao.tab02_marco ab 
-            ON CONFLICT (DATA_HORA,ID_ESTACAO,ID_BLOQUEIO,GRUPO_BILHETAGEM,FORMA_PGTO,TIPO_BILHETAGEM) DO NOTHING;                             
+            ON CONFLICT (DATA_HORA,ID_ESTACAO,ID_BLOQUEIO,GRUPO_BILHETAGEM,FORMA_PGTO,TIPO_BILHETAGEM,ID_VALIDADOR) DO NOTHING;                             
         """,
     },
     {
